@@ -2,15 +2,48 @@
 
 from __future__ import annotations
 
+import logging
 import os
+import warnings
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
 
 _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(_ENV_PATH)
 
+logger = logging.getLogger(__name__)
+
 _client = None
+
+
+def _env_truthy(name: str) -> bool:
+    v = (os.environ.get(name) or "").strip().lower()
+    return v in ("1", "true", "yes", "on")
+
+
+def _build_httpx_client() -> httpx.Client:
+    """
+    Corporate TLS inspection often breaks Python's default trust store.
+    Prefer pointing to your org's root CA bundle; disable verify only as a last resort.
+    """
+    if _env_truthy("ANTHROPIC_SSL_VERIFY_DISABLE"):
+        warnings.warn(
+            "ANTHROPIC_SSL_VERIFY_DISABLE: TLS verification is OFF for Anthropic API calls. "
+            "Prefer ANTHROPIC_CA_BUNDLE with your corporate root CA.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return httpx.Client(verify=False)
+
+    for key in ("ANTHROPIC_CA_BUNDLE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        path = os.environ.get(key)
+        if path and Path(path).is_file():
+            logger.info("Using TLS CA bundle from %s=%s", key, path)
+            return httpx.Client(verify=path)
+
+    return httpx.Client()
 
 
 def _get_client():
@@ -24,7 +57,7 @@ def _get_client():
                 "ANTHROPIC_API_KEY is not set. "
                 "Add it to your .env file (see .env.sample)."
             )
-        _client = anthropic.Anthropic(api_key=api_key)
+        _client = anthropic.Anthropic(api_key=api_key, http_client=_build_httpx_client())
     return _client
 
 

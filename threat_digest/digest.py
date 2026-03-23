@@ -60,16 +60,43 @@ Structure your response as Markdown with these sections:
 """
 
 
-def build_digest(*, days: int = 7, kev_limit: int = 10, rss_limit: int = 15) -> dict[str, str]:
-    """Fetch feeds, summarise with Claude, return structured sections."""
+def _raw_digest_markdown(kevs_md: str, articles_md: str) -> str:
+    """Stakeholder-style structure using only fetched data (no LLM)."""
+    return f"""## Key vulnerabilities (CISA KEV)
+
+{kevs_md}
+
+## Recent threat headlines (RSS)
+
+{articles_md}
+
+## Recommended actions
+
+- Review KEV entries above against your asset inventory and patch or mitigate per CISA due dates.
+- Triage RSS items relevant to your sector and share links with incident-response and leadership.
+- Re-run with AI summarisation after Anthropic billing has credits: `python -m threat_digest` (omit `--no-llm`).
+"""
+
+
+def build_digest(
+    *,
+    days: int = 7,
+    kev_limit: int = 10,
+    rss_limit: int = 15,
+    use_llm: bool = True,
+) -> dict[str, str]:
+    """Fetch feeds; optionally summarise with Claude."""
     kevs = fetch_cisa_kev(limit=kev_limit, days=days)
     articles = fetch_rss(limit=rss_limit, days=days)
 
     kevs_md = _format_kevs(kevs)
     articles_md = _format_articles(articles)
 
-    prompt = DIGEST_PROMPT.format(kevs=kevs_md, articles=articles_md)
-    summary = ask_claude(prompt, system=DIGEST_SYSTEM)
+    if use_llm:
+        prompt = DIGEST_PROMPT.format(kevs=kevs_md, articles=articles_md)
+        summary = ask_claude(prompt, system=DIGEST_SYSTEM)
+    else:
+        summary = _raw_digest_markdown(kevs_md, articles_md)
 
     return {
         "summary": summary,
@@ -77,4 +104,5 @@ def build_digest(*, days: int = 7, kev_limit: int = 10, rss_limit: int = 15) -> 
         "articles_raw": articles_md,
         "kev_count": str(len(kevs)),
         "article_count": str(len(articles)),
+        "used_llm": str(use_llm),
     }

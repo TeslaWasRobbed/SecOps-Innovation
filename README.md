@@ -14,9 +14,10 @@ Generates a stakeholder-friendly weekly (or custom-window) summary of the curren
 python -m threat_digest
 python -m threat_digest --days 14
 python -m threat_digest --days 30 --output-dir custom/path
+python -m threat_digest --no-llm   # CISA KEV + RSS only; no Anthropic credits needed
 ```
 
-**Requires:** `ANTHROPIC_API_KEY` in `.env`
+**Requires:** `ANTHROPIC_API_KEY` in `.env` with available API credits, unless you pass `--no-llm`.
 
 **Data sources:**
 - CISA KEV JSON feed (free, no key)
@@ -87,6 +88,35 @@ cp .env.sample .env
 At minimum, set `ANTHROPIC_API_KEY`. Actor Watch works without any keys.
 
 The first run of any tool that uses MITRE data (Actor Watch, Detection Bot) will download the ATT&CK Enterprise STIX bundle (~25 MB) into `.cache/`. Subsequent runs use the cached copy.
+
+### Troubleshooting: `SSL: CERTIFICATE_VERIFY_FAILED`
+
+If Threat Digest or Detection Bot fails with *certificate verify failed: self-signed certificate in certificate chain*, a corporate TLS inspection proxy is usually intercepting HTTPS. Python does not trust that proxy’s CA by default.
+
+**Preferred fix:** export your organisation’s root CA (or the proxy’s issuing CA) as a PEM file and set one of these in `.env` to that file path:
+
+- `ANTHROPIC_CA_BUNDLE` (read first by this project), or
+- `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, or `CURL_CA_BUNDLE` (common conventions)
+
+Example (Windows):
+
+```text
+ANTHROPIC_CA_BUNDLE=C:\certs\company-root-ca.pem
+```
+
+**Last resort:** set `ANTHROPIC_SSL_VERIFY_DISABLE=true` to turn off TLS verification for Anthropic API calls only. This is insecure on untrusted networks; use only when you accept that risk on your corporate LAN.
+
+### Troubleshooting: Anthropic “credit balance is too low”
+
+Threat Digest and Detection Bot need an Anthropic API key **and** a positive credit balance (pay-as-you-go or plan). If you see a 400 error about credits, add billing at [console.anthropic.com/settings/plans](https://console.anthropic.com/settings/plans).
+
+For Threat Digest only, you can still run without any Anthropic usage:
+
+```bash
+python -m threat_digest --no-llm
+```
+
+That writes the same markdown file with CISA KEV and RSS headlines, without an AI-written summary.
 
 ## Project Structure
 
