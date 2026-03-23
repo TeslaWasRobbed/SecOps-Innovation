@@ -1,0 +1,55 @@
+# Security Operations — Cursor AI Context (POC)
+
+## Environment
+- SIEM: Microsoft Sentinel (target — not yet connected in POC)
+- Cloud platforms: AWS (primary), Azure (target — not yet connected in POC)
+- Identity: Microsoft Entra ID
+- EDR: Microsoft Defender for Endpoint
+- E5 licence in use: Defender XDR, Purview, MDA
+
+## POC Approach
+- All tools run locally using flat files and public APIs only
+- No Azure SDK, no AWS SDK, no live Sentinel connection in this phase
+- Local KQL rule files use YAML frontmatter for metadata (name, severity, tactics, techniques)
+- Live connections will be added later — code should be structured so they are easy to swap in
+
+## Python Conventions
+- Python 3.12
+- Use pip and virtual environments (venv) for dependency management
+- All secrets via environment variables loaded from a .env file using python-dotenv
+- Never hardcode secrets, API keys, or URLs
+- Use pytest for all tests, mock all HTTP calls and file I/O
+- Use the `rich` library for any terminal output that should be formatted nicely
+- Structure code so external API calls are isolated in their own modules — easy to swap later
+
+## KQL Rule File Format (local POC)
+- Files saved as .kql with YAML frontmatter between --- markers
+- Frontmatter fields: name, description, severity, enabled, tactics (list), techniques (list),
+  entity_mappings (list)
+- Example:
+  ---
+  name: [MITRE TACTIC] Suspicious Sign-in from Tor Exit Node
+  description: Detects sign-ins originating from known Tor exit nodes
+  severity: High
+  enabled: true
+  tactics:
+    - InitialAccess
+  techniques:
+    - T1078
+  entity_mappings:
+    - Account
+    - IPAddress
+  ---
+  // KQL rule body here
+
+## ATT&CK
+- Use mitreattack-python library for all MITRE data
+- Always reference Enterprise ATT&CK matrix (not Mobile or ICS)
+- Technique ID format: T1078 (not T1078.004 unless sub-technique is specifically needed)
+
+## Project Structure
+- Each tool lives in its own subdirectory
+- Shared utilities go in /shared/
+- All secrets in .env file — never committed to Git
+- Output files go in each tool's /output/ directory
+- Sample/test data goes in each tool's /sample_data/ directory
