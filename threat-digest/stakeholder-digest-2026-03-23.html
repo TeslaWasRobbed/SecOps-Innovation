@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Threat Digest — Executive Brief — 23 March 2026</title>
+  <style>
+    :root {
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1a1d26;
+      --muted: #5c6370;
+      --accent: #0d47a1;
+      --border: #e2e5eb;
+      --warn: #b71c1c;
+      --ok: #1b5e20;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      line-height: 1.55;
+      color: var(--text);
+      background: var(--bg);
+      margin: 0;
+      padding: 2rem 1.25rem 3rem;
+    }
+    .wrap { max-width: 52rem; margin: 0 auto; }
+    header {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.75rem 1.75rem 1.5rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 600;
+      margin: 0 0 0.35rem;
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
+    .meta { color: var(--muted); font-size: 0.95rem; margin: 0; }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.35rem 1.5rem 1.25rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.04);
+    }
+    h2 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 0 0 0.85rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid var(--accent);
+      color: var(--text);
+    }
+    h3 { font-size: 0.95rem; margin: 1rem 0 0.5rem; color: var(--muted); font-weight: 600; }
+    p { margin: 0 0 0.85rem; }
+    ul { margin: 0 0 0.75rem; padding-left: 1.25rem; }
+    li { margin-bottom: 0.45rem; }
+    .lead { font-size: 1.05rem; color: var(--text); }
+    .badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 0.2rem 0.45rem;
+      border-radius: 4px;
+      margin-right: 0.35rem;
+      vertical-align: middle;
+    }
+    .badge-urgent { background: #ffebee; color: var(--warn); }
+    .badge-high { background: #fff3e0; color: #e65100; }
+    .cve { font-family: ui-monospace, monospace; font-size: 0.9em; font-weight: 600; }
+    .due { color: var(--muted); font-size: 0.88rem; }
+    footer {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Threat Digest — Executive Brief</h1>
+      <p class="meta">Prepared for leadership · Coverage period through 23 March 2026 · Sources: CISA KEV &amp; open threat RSS</p>
+    </header>
+
+    <section>
+      <h2>At a glance</h2>
+      <p class="lead">Several <strong>actively exploited</strong> issues are on CISA’s Known Exploited Vulnerabilities (KEV) catalogue with <strong>near-term federal due dates</strong>, including Microsoft SharePoint deserialization, Cisco FMC/SCC, and widely used web stacks (Craft CMS, Livewire). In parallel, public reporting highlights <strong>supply-chain and devops risk</strong> (Trivy / CI pipelines), <strong>cloud and AI platform abuse</strong> (AWS Bedrock research, Azure Monitor phishing), and <strong>large-scale phishing</strong> against consumer and enterprise messaging.</p>
+    </section>
+
+    <section>
+      <h2>Key vulnerabilities to prioritise</h2>
+      <p>Align patching and compensating controls with <strong>CISA KEV due dates</strong> where you run the affected products. Highest leadership visibility typically applies to SharePoint, Cisco security management, and mass-deployed Apple endpoints.</p>
+
+      <h3>Immediate attention (check due dates against today)</h3>
+      <ul>
+        <li><span class="badge badge-urgent">KEV</span> <span class="cve">CVE-2026-20963</span> — Microsoft SharePoint deserialization · CISA due <span class="due">2026-03-21</span></li>
+        <li><span class="badge badge-urgent">KEV</span> <span class="cve">CVE-2026-20131</span> — Cisco FMC / SCC firewall management deserialization · due <span class="due">2026-03-22</span></li>
+      </ul>
+
+      <h3>High exposure (web, collaboration, endpoints)</h3>
+      <ul>
+        <li><span class="badge badge-high">KEV</span> <span class="cve">CVE-2025-32432</span> — Craft CMS code injection · due <span class="due">2026-04-03</span></li>
+        <li><span class="badge badge-high">KEV</span> <span class="cve">CVE-2025-54068</span> — Laravel Livewire code injection · due <span class="due">2026-04-03</span></li>
+        <li><span class="badge badge-high">KEV</span> <span class="cve">CVE-2025-43510</span>, <span class="cve">CVE-2025-43520</span>, <span class="cve">CVE-2025-31277</span> — Apple multiple products (locking / buffer issues) · due <span class="due">2026-04-03</span></li>
+        <li><span class="badge badge-high">KEV</span> <span class="cve">CVE-2025-66376</span> — Zimbra XSS · due <span class="due">2026-04-01</span></li>
+        <li><span class="badge badge-high">KEV</span> <span class="cve">CVE-2025-47813</span> — Wing FTP information disclosure · due <span class="due">2026-03-30</span></li>
+      </ul>
+      <p><strong>Ask of owners:</strong> Confirm whether these products exist in the estate; where yes, track remediation against the published due dates and document exceptions with compensating controls.</p>
+    </section>
+
+    <section>
+      <h2>Notable campaigns &amp; headlines</h2>
+      <p>Themes that matter for briefings and risk committees:</p>
+      <ul>
+        <li><strong>Supply chain &amp; CI/CD:</strong> Compromise of the Trivy scanner ecosystem — infostealer via GitHub Actions, reported worm and destructive Kubernetes-related activity. Reinforces controls on third-party actions, signing, and pipeline secrets.</li>
+        <li><strong>Cloud &amp; AI abuse surface:</strong> Research and reporting on attack paths in AWS Bedrock; abuse of Azure Monitor alert channels for callback phishing. Worth a joint cloud + security architecture review.</li>
+        <li><strong>Phishing at scale:</strong> IRS-themed campaigns (~29k users cited), Signal/WhatsApp targeting (FBI warning), and continued innovation in social engineering.</li>
+        <li><strong>Endpoint &amp; browser:</strong> “VoidStealer” and related reporting on stealing Chrome secrets via debugging interfaces — relevant to EDR policy and browser hardening.</li>
+        <li><strong>Operational noise:</strong> Exchange Online change impacting mail access — distinguish from malicious activity in SOC playbooks.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Recommended actions</h2>
+      <ol>
+        <li><strong>Patch governance:</strong> Run a same-day inventory pass on SharePoint, Cisco FMC/SCC, Craft CMS, Livewire apps, Zimbra, Wing FTP, and Apple fleet components; align to KEV due dates.</li>
+        <li><strong>Pipeline security:</strong> Review GitHub Actions allow-lists, OIDC usage, and artifact integrity; incident-check any use of Trivy or similar scanners in CI.</li>
+        <li><strong>Cloud controls:</strong> Short workshop on Bedrock IAM, logging, and guardrails; review Azure Monitor alert templates and user education on callback phishing.</li>
+        <li><strong>Phishing response:</strong> Refresh user reporting paths; ensure IRS / messaging-app lures are in current awareness content.</li>
+        <li><strong>Stakeholder loop:</strong> Share this one-pager with IT ops, cloud owners, and incident response; reconvene in one week on closed KEV items and any new CISA additions.</li>
+      </ol>
+    </section>
+
+    <footer>
+      <p>This brief synthesises automated CISA KEV and RSS feeds. It is not a substitute for vendor advisories, internal impact analysis, or regulated reporting. Validate all CVEs and versions against your CMDB.</p>
+    </footer>
+  </div>
+</body>
+</html>

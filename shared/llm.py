@@ -1,4 +1,8 @@
-"""Thin wrapper around the Anthropic Claude API."""
+"""LLM chat completions — provider-neutral surface; swap backends here as needed.
+
+Today this module calls Anthropic's API. Other providers can be added behind the same
+``complete()`` function (e.g. branch on ``LLM_PROVIDER`` in ``.env``).
+"""
 
 from __future__ import annotations
 
@@ -28,16 +32,22 @@ def _build_httpx_client() -> httpx.Client:
     Corporate TLS inspection often breaks Python's default trust store.
     Prefer pointing to your org's root CA bundle; disable verify only as a last resort.
     """
-    if _env_truthy("ANTHROPIC_SSL_VERIFY_DISABLE"):
+    if _env_truthy("LLM_SSL_VERIFY_DISABLE") or _env_truthy("ANTHROPIC_SSL_VERIFY_DISABLE"):
         warnings.warn(
-            "ANTHROPIC_SSL_VERIFY_DISABLE: TLS verification is OFF for Anthropic API calls. "
-            "Prefer ANTHROPIC_CA_BUNDLE with your corporate root CA.",
+            "LLM_SSL_VERIFY_DISABLE / ANTHROPIC_SSL_VERIFY_DISABLE: TLS verification is OFF for "
+            "LLM API calls. Prefer LLM_CA_BUNDLE or ANTHROPIC_CA_BUNDLE with your corporate root CA.",
             UserWarning,
             stacklevel=2,
         )
         return httpx.Client(verify=False)
 
-    for key in ("ANTHROPIC_CA_BUNDLE", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+    for key in (
+        "LLM_CA_BUNDLE",
+        "ANTHROPIC_CA_BUNDLE",
+        "SSL_CERT_FILE",
+        "REQUESTS_CA_BUNDLE",
+        "CURL_CA_BUNDLE",
+    ):
         path = os.environ.get(key)
         if path and Path(path).is_file():
             logger.info("Using TLS CA bundle from %s=%s", key, path)
@@ -46,7 +56,7 @@ def _build_httpx_client() -> httpx.Client:
     return httpx.Client()
 
 
-def _get_client():
+def _get_anthropic_client():
     global _client
     if _client is None:
         import anthropic
@@ -61,16 +71,26 @@ def _get_client():
     return _client
 
 
-def ask_claude(
+def complete(
     prompt: str,
     *,
     system: str = "You are a senior security operations analyst.",
-    model: str = "claude-sonnet-4-20250514",
+    model: str | None = None,
     max_tokens: int = 4096,
 ) -> str:
-    """Send a single-turn message to Claude and return the text response."""
-    response = _get_client().messages.create(
-        model=model,
+    """
+    Single-turn chat completion. Implementation is Anthropic until additional providers are wired in.
+    """
+    provider = (os.environ.get("LLM_PROVIDER") or "anthropic").strip().lower()
+    if provider != "anthropic":
+        raise RuntimeError(
+            f"LLM_PROVIDER={provider!r} is not supported yet. "
+            "Use anthropic or extend shared/llm.py."
+        )
+
+    resolved_model = model or os.environ.get("LLM_MODEL") or "claude-sonnet-4-20250514"
+    response = _get_anthropic_client().messages.create(
+        model=resolved_model,
         max_tokens=max_tokens,
         system=system,
         messages=[{"role": "user", "content": prompt}],

@@ -21,6 +21,7 @@
 - Use pytest for all tests, mock all HTTP calls and file I/O
 - Use the `rich` library for any terminal output that should be formatted nicely
 - Structure code so external API calls are isolated in their own modules — easy to swap later
+- LLM access goes through `shared/llm.py` (`complete()`); add providers there rather than in tools
 
 ## KQL Rule File Format (local POC)
 - Files saved as .kql with YAML frontmatter between --- markers

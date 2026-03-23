@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from shared.llm import ask_claude
+from shared.llm import complete
 from shared.mitre_data import get_technique_by_id
 
 SYSTEM = (
@@ -57,7 +57,7 @@ def generate_rule(
         severity_hint=severity_hint,
     )
 
-    raw = ask_claude(prompt, system=SYSTEM)
+    raw = complete(prompt, system=SYSTEM)
     rule_text = _extract_code_block(raw)
 
     return {

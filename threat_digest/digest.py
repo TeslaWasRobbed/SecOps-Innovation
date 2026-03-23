@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from shared.feeds import fetch_cisa_kev, fetch_rss
-from shared.llm import ask_claude
+from shared.llm import complete
 
 logger = logging.getLogger(__name__)
 
@@ -61,20 +61,31 @@ Structure your response as Markdown with these sections:
 
 
 def _raw_digest_markdown(kevs_md: str, articles_md: str) -> str:
-    """Stakeholder-style structure using only fetched data (no LLM)."""
-    return f"""## Key vulnerabilities (CISA KEV)
+    """Stakeholder-style structure using only fetched data (no LLM API call).
+
+    Leading lines are a copy-paste prompt for Cursor Chat (or similar) to turn feeds into a webpage.
+    """
+    return f"""Please create a stakeholder digest webpage.
+
+Use the raw intelligence below. Write in clear, executive-friendly language; structure it like a simple single-page brief (headings, bullets, short paragraphs). Include: key vulnerabilities to prioritise, notable campaigns or headlines, and concrete recommended actions.
+
+---
+
+## Source data (automated feeds)
+
+### Key vulnerabilities (CISA KEV)
 
 {kevs_md}
 
-## Recent threat headlines (RSS)
+### Recent threat headlines (RSS)
 
 {articles_md}
 
-## Recommended actions
+### Suggested manual triage (optional)
 
-- Review KEV entries above against your asset inventory and patch or mitigate per CISA due dates.
-- Triage RSS items relevant to your sector and share links with incident-response and leadership.
-- Re-run with AI summarisation after Anthropic billing has credits: `python -m threat_digest` (omit `--no-llm`).
+- Review KEV entries against your asset inventory and patch or mitigate per CISA due dates.
+- Triage RSS items relevant to your sector and share with incident-response and leadership.
+- For an API-generated summary instead of pasting this file into chat, run `python -m threat_digest` without `--no-claude` / `--no-llm` (requires LLM API key and credits).
 """
 
 
@@ -94,7 +105,7 @@ def build_digest(
 
     if use_llm:
         prompt = DIGEST_PROMPT.format(kevs=kevs_md, articles=articles_md)
-        summary = ask_claude(prompt, system=DIGEST_SYSTEM)
+        summary = complete(prompt, system=DIGEST_SYSTEM)
     else:
         summary = _raw_digest_markdown(kevs_md, articles_md)
 

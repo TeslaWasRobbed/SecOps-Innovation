@@ -53,13 +53,25 @@ def save_markdown(
     filename: str,
     title: str,
     body: str,
+    *,
+    paste_friendly: bool = False,
 ) -> Path:
-    """Write a Markdown file and return the path."""
+    """Write a Markdown file and return the path.
+
+    If *paste_friendly* is True, *body* is written first (e.g. starts with a Cursor-chat
+    instruction), with a short footer; no leading H1 so the file can be copied wholesale into chat.
+    """
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     path = out / filename
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    content = f"# {title}\n\n*Generated: {timestamp}*\n\n{body}"
+    if paste_friendly:
+        content = (
+            f"{body.rstrip()}\n\n---\n\n"
+            f"_Threat digest feed export · {title} · {timestamp} · `{filename}`_\n"
+        )
+    else:
+        content = f"# {title}\n\n*Generated: {timestamp}*\n\n{body}"
     path.write_text(content, encoding="utf-8")
     console.print(f"[dim]Saved -> {path}[/dim]")
     return path

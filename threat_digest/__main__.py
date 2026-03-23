@@ -20,16 +20,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--days", type=int, default=7, help="Look-back window in days (default: 7)")
     parser.add_argument("--output-dir", default="threat_digest/output", help="Directory for markdown output")
     parser.add_argument(
+        "--no-claude",
+        action="store_true",
+        help="Skip Claude: save CISA KEV + RSS only (no Anthropic API; no credits required)",
+    )
+    parser.add_argument(
         "--no-llm",
         action="store_true",
-        help="Skip Claude: save CISA KEV + RSS only (no API usage; no credits required)",
+        help=argparse.SUPPRESS,
     )
     args = parser.parse_args(argv)
+    skip_claude = args.no_claude or args.no_llm
 
     console.print("\n[bold cyan]Threat Digest[/bold cyan] — fetching intelligence...\n")
 
     try:
-        result = build_digest(days=args.days, use_llm=not args.no_llm)
+        result = build_digest(days=args.days, use_llm=not skip_claude)
     except RuntimeError as exc:
         console.print(f"[bold red]Error:[/bold red] {exc}")
         return 1
@@ -44,13 +50,13 @@ def main(argv: list[str] | None = None) -> int:
         else:
             console.print(f"{body}\n")
         console.print(
-            "You can still generate a feed-only digest (no AI, no Anthropic charge):\n"
-            "  [bold]python -m threat_digest --no-llm[/bold]\n"
+            "You can still generate a feed-only digest (no Anthropic API call):\n"
+            "  [bold]python -m threat_digest --no-claude[/bold]\n"
         )
         return 1
     except anthropic.APIConnectionError as exc:
         console.print(f"[bold red]Cannot reach Anthropic API:[/bold red] {exc}\n")
-        console.print("Try [bold]python -m threat_digest --no-llm[/bold] for a feed-only digest.\n")
+        console.print("Try [bold]python -m threat_digest --no-claude[/bold] for a feed-only digest.\n")
         return 1
 
     mode = "Claude summary" if result.get("used_llm") == "true" else "raw feeds only"
@@ -63,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
         f"digest_{datestamp}.md",
         f"Threat Digest — {datestamp}",
         result["summary"],
+        paste_friendly=skip_claude,
     )
     return 0
 

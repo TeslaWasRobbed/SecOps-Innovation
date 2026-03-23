@@ -14,16 +14,16 @@ Generates a stakeholder-friendly weekly (or custom-window) summary of the curren
 python -m threat_digest
 python -m threat_digest --days 14
 python -m threat_digest --days 30 --output-dir custom/path
-python -m threat_digest --no-llm   # CISA KEV + RSS only; no Anthropic credits needed
+python -m threat_digest --no-claude   # or --no-llm: feeds only; no LLM API key needed
 ```
 
-**Requires:** `ANTHROPIC_API_KEY` in `.env` with available API credits, unless you pass `--no-llm`.
+**Requires:** `ANTHROPIC_API_KEY` in `.env` with available API credits, unless you pass `--no-claude` or `--no-llm`.
 
 **Data sources:**
 - CISA KEV JSON feed (free, no key)
 - RSS: BleepingComputer, The Hacker News, Krebs on Security, CISA Alerts
 
-**Output:** Rich terminal panel + `threat_digest/output/digest_YYYY-MM-DD.md`
+**Output:** Rich terminal panel + `threat_digest/output/digest_YYYY-MM-DD.md`. In feed-only mode, the markdown file **starts with a copy-paste prompt** (“Please create a stakeholder digest webpage…”) so you can paste the entire file into Cursor Chat and ask the editor to produce the page—no API key required for that workflow.
 
 ### Actor Watch
 
@@ -95,7 +95,7 @@ If Threat Digest or Detection Bot fails with *certificate verify failed: self-si
 
 **Preferred fix:** export your organisation’s root CA (or the proxy’s issuing CA) as a PEM file and set one of these in `.env` to that file path:
 
-- `ANTHROPIC_CA_BUNDLE` (read first by this project), or
+- `LLM_CA_BUNDLE` or `ANTHROPIC_CA_BUNDLE` (read first by this project), or
 - `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE`, or `CURL_CA_BUNDLE` (common conventions)
 
 Example (Windows):
@@ -104,7 +104,7 @@ Example (Windows):
 ANTHROPIC_CA_BUNDLE=C:\certs\company-root-ca.pem
 ```
 
-**Last resort:** set `ANTHROPIC_SSL_VERIFY_DISABLE=true` to turn off TLS verification for Anthropic API calls only. This is insecure on untrusted networks; use only when you accept that risk on your corporate LAN.
+**Last resort:** set `LLM_SSL_VERIFY_DISABLE=true` (or `ANTHROPIC_SSL_VERIFY_DISABLE=true`) to turn off TLS verification for LLM API calls only. This is insecure on untrusted networks; use only when you accept that risk on your corporate LAN.
 
 ### Troubleshooting: Anthropic “credit balance is too low”
 
@@ -113,7 +113,7 @@ Threat Digest and Detection Bot need an Anthropic API key **and** a positive cre
 For Threat Digest only, you can still run without any Anthropic usage:
 
 ```bash
-python -m threat_digest --no-llm
+python -m threat_digest --no-claude
 ```
 
 That writes the same markdown file with CISA KEV and RSS headlines, without an AI-written summary.
@@ -123,7 +123,7 @@ That writes the same markdown file with CISA KEV and RSS headlines, without an A
 ```
 SecOps Innovation/
 ├── shared/                  # Common library modules
-│   ├── llm.py               # Anthropic Claude client
+│   ├── llm.py               # LLM completions (Anthropic today; extend for other providers)
 │   ├── feeds.py             # CISA KEV + RSS feed fetchers
 │   ├── mitre_data.py        # ATT&CK Enterprise data loader and queries
 │   └── output.py            # Dual output: Rich terminal + Markdown files
