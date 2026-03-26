@@ -17,6 +17,7 @@
 
 ### ➕ New Features Added
 - **Azure OpenAI Integration**: Added `openai_client.py` with SecOps-specific AI capabilities
+- **Prioritized OpenAI**: Updated `shared/llm.py` to use Azure OpenAI as primary provider with Anthropic fallback
 - **Enhanced API Support**: Updated configuration for VirusTotal, GitHub, and Azure OpenAI APIs
 - **Updated requirements.txt**: Added OpenAI dependency
 

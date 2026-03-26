@@ -2,22 +2,22 @@
 
 A local-first proof-of-concept toolkit for Security Operations, built to surface threat intelligence, track adversary behaviour, and generate Microsoft Sentinel detection rules — all without requiring a live Sentinel or Azure connection.
 
-The toolkit is designed around three standalone CLI tools that share a common library of threat-intelligence primitives. Everything runs offline or against free public APIs (CISA, RSS, MITRE ATT&CK), with Anthropic Claude providing AI-assisted summarisation and rule generation.
+The toolkit is designed around three standalone CLI tools that share a common library of threat-intelligence primitives. Everything runs offline or against free public APIs (CISA, RSS, MITRE ATT&CK), with Azure OpenAI providing AI-assisted summarisation and rule generation.
 
 ## Tools
 
 ### Threat Digest
 
-Generates a stakeholder-friendly weekly (or custom-window) summary of the current threat landscape by pulling live data from CISA's Known Exploited Vulnerabilities catalogue and security RSS feeds, then passing it through Claude for structured summarisation.
+Generates a stakeholder-friendly weekly (or custom-window) summary of the current threat landscape by pulling live data from CISA's Known Exploited Vulnerabilities catalogue and security RSS feeds, then passing it through Azure OpenAI for structured summarisation.
 
 ```
 python -m threat_digest
 python -m threat_digest --days 14
 python -m threat_digest --days 30 --output-dir custom/path
-python -m threat_digest --no-claude   # or --no-llm: feeds only; no LLM API key needed
+python -m threat_digest --no-llm   # feeds only; no LLM API key needed
 ```
 
-**Requires:** `ANTHROPIC_API_KEY` in `.env` with available API credits, unless you pass `--no-claude` or `--no-llm`. Alternatively, configure Azure OpenAI for enhanced AI capabilities.
+**Requires:** `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_KEY` in `.env`, unless you pass `--no-llm`. Alternatively, configure Anthropic as a fallback option.
 
 **Data sources:**
 - CISA KEV JSON feed (free, no key)
@@ -42,7 +42,7 @@ python -m actor_watch "Cozy Bear"        # aliases work too
 
 ### Detection Bot
 
-Given any MITRE ATT&CK technique ID, uses Claude to draft a production-style Microsoft Sentinel scheduled analytics rule in KQL, complete with YAML frontmatter metadata.
+Given any MITRE ATT&CK technique ID, uses Azure OpenAI to draft a production-style Microsoft Sentinel scheduled analytics rule in KQL, complete with YAML frontmatter metadata.
 
 ```
 python -m detection_bot T1078
@@ -51,7 +51,7 @@ python -m detection_bot T1566.001 --severity High
 python -m detection_bot T1021.002 --data-sources "DeviceNetworkEvents" "DeviceProcessEvents"
 ```
 
-**Requires:** `ANTHROPIC_API_KEY` in `.env` or Azure OpenAI configuration
+**Requires:** `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_KEY` in `.env` or Anthropic as fallback
 
 **Output:** Rich syntax-highlighted terminal panel + `output/detection_bot/<TechniqueID>.kql` and `.md`
 
@@ -60,7 +60,7 @@ python -m detection_bot T1021.002 --data-sources "DeviceNetworkEvents" "DevicePr
 ### Prerequisites
 
 - Python 3.12+
-- An Anthropic API key (for Threat Digest and Detection Bot) OR Azure OpenAI access
+- Azure OpenAI access (for Threat Digest and Detection Bot) OR Anthropic API key as fallback
 - Optional: VirusTotal API key (free) for enhanced IOC analysis
 - Optional: GitHub token for security advisory management
 
@@ -87,7 +87,7 @@ Copy the sample environment file and fill in your keys:
 cp .env.example .env
 ```
 
-At minimum, set `ANTHROPIC_API_KEY` or configure Azure OpenAI (`AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_KEY`). Actor Watch works without any keys.
+At minimum, set `AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_KEY` or configure Anthropic (`ANTHROPIC_API_KEY`) as fallback. Actor Watch works without any keys.
 
 ### Azure OpenAI Integration
 
@@ -128,12 +128,12 @@ ANTHROPIC_CA_BUNDLE=C:\certs\company-root-ca.pem
 
 ### Troubleshooting: Anthropic “credit balance is too low”
 
-Threat Digest and Detection Bot need an Anthropic API key **and** a positive credit balance (pay-as-you-go or plan). If you see a 400 error about credits, add billing at [console.anthropic.com/settings/plans](https://console.anthropic.com/settings/plans).
+Threat Digest and Detection Bot need Azure OpenAI access with proper endpoint and API key configuration. If you see authentication errors, verify your Azure OpenAI resource is properly configured and the API key is valid.
 
-For Threat Digest only, you can still run without any Anthropic usage:
+For Threat Digest only, you can still run without any AI usage:
 
 ```bash
-python -m threat_digest --no-claude
+python -m threat_digest --no-llm
 ```
 
 That writes the same markdown file with CISA KEV and RSS headlines, without an AI-written summary.
@@ -143,7 +143,7 @@ That writes the same markdown file with CISA KEV and RSS headlines, without an A
 ```
 SecOps Innovation/
 ├── shared/                  # Common library modules
-│   ├── llm.py               # LLM completions (Anthropic today; extend for other providers)
+│   ├── llm.py               # LLM completions (Azure OpenAI primary, Anthropic fallback)
 │   ├── feeds.py             # CISA KEV + RSS feed fetchers
 │   ├── mitre_data.py        # ATT&CK Enterprise data loader and queries
 │   └── output.py            # Dual output: Rich terminal + Markdown files
@@ -199,7 +199,7 @@ SigninLogs
 
 - **No live Sentinel connection** — all tools use local files and public APIs so there are no cloud credentials required for the POC. The code is structured with isolated API modules in `shared/` so live connections (Azure SDK, Sentinel API) can be swapped in later without rewriting tool logic.
 - **MITRE ATT&CK as the common language** — Actor Watch and Detection Bot both reference the Enterprise ATT&CK matrix via `mitreattack-python`, ensuring technique IDs, tactic names, and group metadata are consistent across the toolkit.
-- **Claude for generation, not for data** — Claude summarises and drafts, but the underlying data always comes from authoritative sources (CISA, MITRE, RSS feeds). This keeps outputs grounded and auditable.
+- **AI for generation, not for data** — Azure OpenAI (or Anthropic fallback) summarises and drafts, but the underlying data always comes from authoritative sources (CISA, MITRE, RSS feeds). This keeps outputs grounded and auditable.
 - **Dual output** — every tool renders to the terminal with `rich` for immediate feedback and saves a Markdown file for sharing with stakeholders or pasting into Teams/email.
 
 ## Future Roadmap
