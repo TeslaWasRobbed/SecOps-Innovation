@@ -42,7 +42,7 @@ python -m actor_watch "Cozy Bear"        # aliases work too
 
 ### Detection Bot
 
-Given any MITRE ATT&CK technique ID, uses Azure OpenAI to draft a production-style Microsoft Sentinel scheduled analytics rule in KQL, complete with YAML frontmatter metadata.
+Given any MITRE ATT&CK technique ID, uses Azure OpenAI to draft a production-style Microsoft Sentinel scheduled analytics rule in KQL, following the ScheduledRuleTemplate.yaml structure with complete YAML frontmatter metadata.
 
 ```
 python -m detection_bot T1078
@@ -173,26 +173,84 @@ All tools write their output to the centralized `output/` directory with organiz
 
 ## KQL Rule Format
 
-Detection Bot generates rules in the project's standard `.kql` format: YAML frontmatter between `---` markers followed by the KQL query body.
+Detection Bot generates rules following the `ScheduledRuleTemplate.yaml` structure, ensuring consistency and production-readiness:
 
 ```yaml
----
+id: 00000000-0000-0000-0000-000000000000
 name: "[InitialAccess] Suspicious sign-in from Tor exit node"
-description: Detects sign-ins originating from known Tor exit nodes
-severity: High
+description: |
+  DO NOT EDIT IN PORTAL - MANAGED VIA GIT REPO.
+  
+  Detects sign-ins originating from known Tor exit nodes
+  This behavior may indicate credential compromise or evasion attempts
+  SOC analysts should verify legitimacy and check for additional suspicious activity
+
 enabled: true
+status: Available
+severity: High
+
+requiredDataConnectors:
+  - connectorId: AzureActiveDirectory
+    dataTypes:
+      - SigninLogs
+
+queryFrequency: PT1H
+queryPeriod: PT2H
+
+query: |
+  SigninLogs
+  | where TimeGenerated > ago(2h)
+  | where IPAddress in (TorExitNodes)
+  | project TimeGenerated, UserPrincipalName, IPAddress, Location
+
+triggerOperator: gt
+triggerThreshold: 0
+
 tactics:
   - InitialAccess
-techniques:
+relevantTechniques:
   - T1078
-entity_mappings:
-  - Account
-  - IPAddress
----
-SigninLogs
-| where TimeGenerated > ago(1h)
-| where IPAddress in (TorExitNodes)
-| project TimeGenerated, UserPrincipalName, IPAddress, Location
+
+tags:
+  - ManagedBy:Repository
+  - Owner:SOC
+  - Category:Identity
+  - Version:1.0.0
+
+entityMappings:
+  - entityType: Account
+    fieldMappings:
+      - identifier: FullName
+        columnName: UserPrincipalName
+  - entityType: IP
+    fieldMappings:
+      - identifier: Address
+        columnName: IPAddress
+
+alertDetailsOverride:
+  alertDisplayNameFormat: "{{UserPrincipalName}} - Suspicious Tor sign-in"
+  alertDescriptionFormat: "User {{UserPrincipalName}} signed in from Tor exit node {{IPAddress}}"
+
+customDetails:
+  SourceIP: IPAddress
+  Location: Location
+
+eventGroupingSettings:
+  aggregationKind: SingleAlert
+
+incidentConfiguration:
+  createIncident: true
+  groupingConfiguration:
+    enabled: true
+    reopenClosedIncident: false
+    lookbackDuration: PT5H
+    matchingMethod: AllEntities
+
+suppressionEnabled: false
+suppressionDuration: PT1H
+
+version: 1.0.0
+kind: Scheduled
 ```
 
 ## Architecture Decisions

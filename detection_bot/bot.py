@@ -1,4 +1,4 @@
-"""Core logic for generating Sentinel detection rules with Claude."""
+"""Core logic for generating Sentinel detection rules following ScheduledRuleTemplate.yaml structure."""
 
 from __future__ import annotations
 
@@ -22,14 +22,80 @@ Write a Microsoft Sentinel scheduled analytics rule for the following ATT&CK tec
 **Relevant data sources:** {data_sources}
 {severity_hint}
 
-The output MUST be a single fenced code block containing:
-1. YAML frontmatter between --- markers with these fields:
-   name, description, severity, enabled (true), tactics (list), techniques (list), entity_mappings (list)
-2. A KQL query body after the closing --- that uses realistic Sentinel table names
-   (e.g. SigninLogs, SecurityEvent, DeviceProcessEvents, IdentityDirectoryEvents, etc.)
+The output MUST be a single fenced code block containing a YAML rule that follows this EXACT structure:
 
-Make the rule realistic, opinionated, and immediately usable. Include summarize/project
-operators and meaningful entity mappings (Account, Host, IP as appropriate).
+```yaml
+id: 00000000-0000-0000-0000-000000000000
+name: "[{primary_tactic}] <Alert Name>"
+description: |
+  DO NOT EDIT IN PORTAL - MANAGED VIA GIT REPO.
+  
+  <Describe what the detection finds>
+  <Explain why it matters (risk/behavior/attacker intent)>
+  <Add expected SOC analyst action or playbook if applicable>
+
+enabled: true
+status: Available
+severity: {severity_level}
+
+requiredDataConnectors:
+  - connectorId: <ConnectorId>
+    dataTypes:
+      - <DataType>
+
+queryFrequency: PT1H
+queryPeriod: PT2H
+
+query: |
+  // <KQL query here using realistic Sentinel table names>
+  // Ensure all columns referenced in entityMappings, customDetails exist in output
+
+triggerOperator: gt
+triggerThreshold: 0
+
+tactics:
+  - {primary_tactic}
+relevantTechniques:
+  - {tid}
+
+tags:
+  - ManagedBy:Repository
+  - Owner:SOC
+  - Category:<Category>
+  - Version:1.0.0
+
+entityMappings:
+  - entityType: <EntityType>
+    fieldMappings:
+      - identifier: <Identifier>
+        columnName: <ColumnName>
+
+alertDetailsOverride:
+  alertDisplayNameFormat: "<Dynamic alert title>"
+  alertDescriptionFormat: "<Dynamic alert description>"
+
+customDetails:
+  <Key>: <ColumnName>
+
+eventGroupingSettings:
+  aggregationKind: SingleAlert
+
+incidentConfiguration:
+  createIncident: true
+  groupingConfiguration:
+    enabled: true
+    reopenClosedIncident: false
+    lookbackDuration: PT5H
+    matchingMethod: AllEntities
+
+suppressionEnabled: false
+suppressionDuration: PT1H
+
+version: 1.0.0
+kind: Scheduled
+```
+
+Make the rule realistic, production-ready, and immediately usable. Use appropriate connector IDs, data types, and entity mappings for the technique.
 Do NOT include any text outside the fenced code block.
 """
 
@@ -46,7 +112,9 @@ def generate_rule(
         raise ValueError(f"Technique {technique_id} not found in ATT&CK Enterprise matrix.")
 
     sources = data_sources or tech.get("data_sources") or ["(not specified — use best judgement)"]
-    severity_hint = f"**Suggested severity:** {severity}" if severity else ""
+    severity_level = severity or "Medium"
+    primary_tactic = tech["tactics"][0] if tech["tactics"] else "Unknown"
+    severity_hint = f"**Suggested severity:** {severity_level}"
 
     prompt = PROMPT.format(
         tid=technique_id,
@@ -55,6 +123,8 @@ def generate_rule(
         tactics=", ".join(tech["tactics"]) or "unknown",
         data_sources=", ".join(sources),
         severity_hint=severity_hint,
+        primary_tactic=primary_tactic,
+        severity_level=severity_level,
     )
 
     raw = complete(prompt, system=SYSTEM)

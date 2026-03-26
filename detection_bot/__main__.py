@@ -19,7 +19,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("technique", help="ATT&CK technique ID, e.g. T1078 or T1003.006")
     parser.add_argument("--severity", default=None, help="Suggest a severity (High, Medium, Low)")
     parser.add_argument("--data-sources", nargs="*", default=None, help="Override data sources")
-    parser.add_argument("--output-dir", default="detection_bot/output", help="Directory for output files")
+    parser.add_argument("--output-dir", default="output/detection_bot", help="Directory for output files")
     args = parser.parse_args(argv)
 
     tid = args.technique.upper()
