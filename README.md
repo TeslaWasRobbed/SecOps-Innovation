@@ -17,7 +17,7 @@ python -m threat_digest --days 30 --output-dir custom/path
 python -m threat_digest --no-claude   # or --no-llm: feeds only; no LLM API key needed
 ```
 
-**Requires:** `ANTHROPIC_API_KEY` in `.env` with available API credits, unless you pass `--no-claude` or `--no-llm`.
+**Requires:** `ANTHROPIC_API_KEY` in `.env` with available API credits, unless you pass `--no-claude` or `--no-llm`. Alternatively, configure Azure OpenAI for enhanced AI capabilities.
 
 **Data sources:**
 - CISA KEV JSON feed (free, no key)
@@ -38,7 +38,7 @@ python -m actor_watch "Cozy Bear"        # aliases work too
 
 **Requires:** No API key — fully offline using the ATT&CK Enterprise STIX bundle.
 
-**Output:** Rich terminal table/panel + `actor_watch/output/<ActorName>.md`
+**Output:** Rich terminal table/panel + `output/actor_watch/<ActorName>.md`
 
 ### Detection Bot
 
@@ -51,16 +51,18 @@ python -m detection_bot T1566.001 --severity High
 python -m detection_bot T1021.002 --data-sources "DeviceNetworkEvents" "DeviceProcessEvents"
 ```
 
-**Requires:** `ANTHROPIC_API_KEY` in `.env`
+**Requires:** `ANTHROPIC_API_KEY` in `.env` or Azure OpenAI configuration
 
-**Output:** Rich syntax-highlighted terminal panel + `detection_bot/output/<TechniqueID>.kql` and `.md`
+**Output:** Rich syntax-highlighted terminal panel + `output/detection_bot/<TechniqueID>.kql` and `.md`
 
 ## Getting Started
 
 ### Prerequisites
 
 - Python 3.12+
-- An Anthropic API key (for Threat Digest and Detection Bot)
+- An Anthropic API key (for Threat Digest and Detection Bot) OR Azure OpenAI access
+- Optional: VirusTotal API key (free) for enhanced IOC analysis
+- Optional: GitHub token for security advisory management
 
 ### Installation
 
@@ -82,10 +84,28 @@ pip install -r requirements.txt
 Copy the sample environment file and fill in your keys:
 
 ```bash
-cp .env.sample .env
+cp .env.example .env
 ```
 
-At minimum, set `ANTHROPIC_API_KEY`. Actor Watch works without any keys.
+At minimum, set `ANTHROPIC_API_KEY` or configure Azure OpenAI (`AZURE_OPENAI_ENDPOINT` and `AZURE_OPENAI_KEY`). Actor Watch works without any keys.
+
+### Azure OpenAI Integration
+
+The project includes enhanced Azure OpenAI integration via `openai_client.py` for organizations using Azure OpenAI services. This provides:
+
+- **Multi-model AI capabilities** with GPT-5 and other Azure OpenAI models
+- **SecOps-specific methods** for threat intelligence analysis and security advisory generation
+- **Integration with VirusTotal and GitHub APIs** for comprehensive security workflows
+- **Fallback support** when multiple AI providers are configured
+
+Example usage:
+```python
+from openai_client import SecOpsAIClient
+
+client = SecOpsAIClient()
+analysis = client.analyze_threat_intelligence(threat_data)
+summary = client.generate_security_summary(raw_data, "executive")
+```
 
 The first run of any tool that uses MITRE data (Actor Watch, Detection Bot) will download the ATT&CK Enterprise STIX bundle (~25 MB) into `.cache/`. Subsequent runs use the cached copy.
 
@@ -136,15 +156,20 @@ SecOps Innovation/
 ├── detection_bot/           # Detection Bot tool
 │   ├── __main__.py          # CLI entry point
 │   └── bot.py               # Technique lookup + Claude rule generation
+├── output/                  # Centralized output directory
+│   ├── threat_digest/       # Threat digest reports and stakeholder digests
+│   ├── actor_watch/         # Actor profile reports
+│   └── detection_bot/       # Generated KQL rules and documentation
+├── openai_client.py         # Azure OpenAI integration for enhanced AI capabilities
 ├── .cache/                  # Auto-downloaded MITRE STIX data (gitignored)
 ├── .env                     # API keys and secrets (gitignored)
-├── .env.sample              # Template showing required variables
+├── .env.example             # Template showing required variables
 ├── .cursorrules             # Cursor AI coding context
 ├── .gitignore
 └── requirements.txt
 ```
 
-Each tool writes its output to its own `output/` subdirectory. These directories are created automatically on first run and are gitignored.
+All tools write their output to the centralized `output/` directory with organized subdirectories. These directories are created automatically on first run and are gitignored.
 
 ## KQL Rule Format
 
