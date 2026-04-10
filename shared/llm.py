@@ -33,10 +33,14 @@ def _build_httpx_client() -> httpx.Client:
     Corporate TLS inspection often breaks Python's default trust store.
     Prefer pointing to your org's root CA bundle; disable verify only as a last resort.
     """
-    if _env_truthy("LLM_SSL_VERIFY_DISABLE") or _env_truthy("ANTHROPIC_SSL_VERIFY_DISABLE"):
+    if (
+        _env_truthy("LLM_SSL_VERIFY_DISABLE")
+        or _env_truthy("ANTHROPIC_SSL_VERIFY_DISABLE")
+        or _env_truthy("AZURE_OPENAI_SSL_VERIFY_DISABLE")
+    ):
         warnings.warn(
-            "LLM_SSL_VERIFY_DISABLE / ANTHROPIC_SSL_VERIFY_DISABLE: TLS verification is OFF for "
-            "LLM API calls. Prefer LLM_CA_BUNDLE or ANTHROPIC_CA_BUNDLE with your corporate root CA.",
+            "LLM_SSL_VERIFY_DISABLE / ANTHROPIC_SSL_VERIFY_DISABLE / AZURE_OPENAI_SSL_VERIFY_DISABLE: "
+            "TLS verification is OFF for LLM API calls. Prefer LLM_CA_BUNDLE with your corporate root CA.",
             UserWarning,
             stacklevel=2,
         )
@@ -44,6 +48,7 @@ def _build_httpx_client() -> httpx.Client:
 
     for key in (
         "LLM_CA_BUNDLE",
+        "AZURE_OPENAI_CA_BUNDLE",
         "ANTHROPIC_CA_BUNDLE",
         "SSL_CERT_FILE",
         "REQUESTS_CA_BUNDLE",
@@ -57,24 +62,65 @@ def _build_httpx_client() -> httpx.Client:
     return httpx.Client()
 
 
+def _extract_openai_assistant_text(response) -> str:
+    """
+    Normalise chat completion output. Reasoning-style models may return empty ``content`` if
+    the completion budget is too low, or populate ``refusal`` instead.
+    """
+    if not response.choices:
+        raise RuntimeError("OpenAI response has no choices.")
+    choice = response.choices[0]
+    msg = choice.message
+    raw = getattr(msg, "content", None)
+    if raw is None:
+        body = ""
+    elif isinstance(raw, str):
+        body = raw
+    else:
+        body = str(raw)
+    body = body.strip()
+    if body:
+        return body
+
+    refusal = getattr(msg, "refusal", None)
+    if refusal:
+        raise RuntimeError(f"Model refused to generate output: {refusal}")
+
+    finish = getattr(choice, "finish_reason", None)
+    if finish == "length":
+        raise RuntimeError(
+            "LLM returned no visible text (finish_reason=length). "
+            "Reasoning models often need a higher max_completion_tokens — the budget was exhausted "
+            "before producing user-visible output."
+        )
+    raise RuntimeError(
+        f"LLM returned empty content (finish_reason={finish!r}). "
+        "Try increasing max_completion_tokens for this call, or check deployment logs."
+    )
+
+
 def _get_openai_client():
     global _openai_client
     if _openai_client is None:
         from openai import AzureOpenAI
 
-        endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT")
+        endpoint = (os.environ.get("AZURE_OPENAI_ENDPOINT") or "").strip().rstrip("/")
         api_key = os.environ.get("AZURE_OPENAI_KEY")
-        
+
         if not endpoint or not api_key:
             raise RuntimeError(
                 "AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_KEY are not set. "
                 "Add them to your .env file (see .env.example)."
             )
-        
+
+        api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-12-01-preview").strip()
+
+        # Same httpx TLS behaviour as Anthropic (corporate CA bundle / VPN inspection).
         _openai_client = AzureOpenAI(
-            api_version="2024-12-01-preview",
+            api_version=api_version,
             azure_endpoint=endpoint,
             api_key=api_key,
+            http_client=_build_httpx_client(),
         )
     return _openai_client
 
@@ -122,17 +168,24 @@ def complete(
             )
     
     if provider == "openai":
-        resolved_model = model or os.environ.get("LLM_MODEL") or "gpt-5"
+        # Azure OpenAI: ``model`` is the deployment name (often matches model id, e.g. gpt-5).
+        deployment = (
+            model
+            or os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+            or os.environ.get("LLM_MODEL")
+            or "gpt-5"
+        ).strip()
         try:
+            # Newer Azure deployments expect max_completion_tokens (same pattern as org AI team snippet).
             response = _get_openai_client().chat.completions.create(
-                model=resolved_model,
-                max_tokens=max_tokens,
+                model=deployment,
+                max_completion_tokens=max_tokens,
                 messages=[
                     {"role": "system", "content": system},
-                    {"role": "user", "content": prompt}
+                    {"role": "user", "content": prompt},
                 ],
             )
-            return response.choices[0].message.content
+            return _extract_openai_assistant_text(response)
         except Exception as e:
             logger.warning(f"Azure OpenAI failed: {e}. Trying Anthropic fallback...")
             if os.environ.get("ANTHROPIC_API_KEY"):
@@ -148,7 +201,10 @@ def complete(
             system=system,
             messages=[{"role": "user", "content": prompt}],
         )
-        return response.content[0].text
+        text = response.content[0].text
+        if not (text or "").strip():
+            raise RuntimeError("Anthropic returned empty text.")
+        return text
     
     raise RuntimeError(
         f"LLM_PROVIDER={provider!r} is not supported. "

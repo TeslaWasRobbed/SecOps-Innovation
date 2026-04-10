@@ -23,34 +23,19 @@
 - Structure code so external API calls are isolated in their own modules — easy to swap later
 - LLM access goes through `shared/llm.py` (`complete()`); add providers there rather than in tools
 
-## KQL Rule File Format (local POC)
-- Files saved as .kql with YAML frontmatter between --- markers
-- Frontmatter fields: name, description, severity, enabled, tactics (list), techniques (list),
-  entity_mappings (list)
-- Example:
-  ---
-  name: [MITRE TACTIC] Suspicious Sign-in from Tor Exit Node
-  description: Detects sign-ins originating from known Tor exit nodes
-  severity: High
-  enabled: true
-  tactics:
-    - InitialAccess
-  techniques:
-    - T1078
-  entity_mappings:
-    - Account
-    - IPAddress
-  ---
-  // KQL rule body here
+## KQL / Sentinel rules (Detection Bot)
+- Detection Bot emits a **single YAML document** (not `---` + body): see `detection_bot/ScheduledRuleTemplate.yaml` and `docs/detection-bot-template.md`
+- Default save path: `output/detection_bot/<TechniqueID>.kql`
 
 ## ATT&CK
 - Use mitreattack-python library for all MITRE data
 - Always reference Enterprise ATT&CK matrix (not Mobile or ICS)
 - Technique ID format: T1078 (not T1078.004 unless sub-technique is specifically needed)
 
-## Project Structure
-- Each tool lives in its own subdirectory
-- Shared utilities go in /shared/
-- All secrets in .env file — never committed to Git
-- Output files go in each tool's /output/ directory
-- Sample/test data goes in each tool's /sample_data/ directory
+## Repository layout
+- Tools: `threat_digest/`, `actor_watch/`, `detection_bot/` — run as `python -m <package>` from repo root
+- Shared code: `shared/` (`llm.py`, `feeds.py`, `mitre_data.py`, `output.py`)
+- Generated artefacts: **`output/<tool_name>/`** only (gitignored); do not add `threat_digest/output` or `actor_watch/output`
+- Optional **`company_profile.yaml`** (see `company_profile.example.yaml`) tailors threat digest LLM prompts and stakeholder HTML sidebar
+- Extra docs: `docs/`
+- Secrets: `.env` (never commit); template `.env.example`

@@ -51,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
 
     console.print(
         f"\n[green]Done.[/green] Rule for {tid} saved to [bold]{kql_path}[/bold]. "
-        "Copy it to your sample_rules/ folder to include it in coverage analysis.\n"
+        "Promote via your Sentinel-as-code or rules repo workflow.\n"
     )
     return 0
 

@@ -2,8 +2,9 @@
 .env
 .env.local
 
-# Output directories
+# Generated outputs (all tools default here)
 output/
+# Legacy per-package output dirs — do not use; ignored if recreated
 */output/
 
 # Python

@@ -1,23 +1,28 @@
 """
-OpenAI Azure Client for SecOps Innovation Project
-Provides a configured client for interacting with Azure OpenAI services.
-Integrates with VirusTotal, GitHub, and other security APIs for comprehensive analysis.
+OpenAI Azure Client for SecOps Innovation Project.
+
+Configured like the org AI team snippet: ``AzureOpenAI`` with ``api_version``,
+``azure_endpoint``, ``api_key``, then ``chat.completions.create`` with
+``model=<deployment>`` and ``max_completion_tokens``.
 """
 
 import os
 from openai import AzureOpenAI
 from typing import List, Dict, Any, Optional
 
+from shared.llm import _build_httpx_client
+
 class SecOpsAIClient:
     """Azure OpenAI client configured for SecOps operations."""
     
     def __init__(self):
-        # Azure OpenAI Configuration
-        self.endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "<your-endpoint>")
+        # Azure OpenAI — matches org AI team pattern (AzureOpenAI + deployment as model + max_completion_tokens)
+        self.endpoint = (os.getenv("AZURE_OPENAI_ENDPOINT", "<your-endpoint>") or "").strip().rstrip("/")
         self.subscription_key = os.getenv("AZURE_OPENAI_KEY", "<your-api-key>")
-        self.api_version = "2024-12-01-preview"
-        self.model_name = "gpt-5"
-        self.deployment = "gpt-5"
+        self.api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview").strip()
+        self.deployment = (
+            os.getenv("AZURE_OPENAI_DEPLOYMENT") or os.getenv("LLM_MODEL") or "gpt-5"
+        ).strip()
         
         # Other API configurations for SecOps integrations
         self.virustotal_key = os.getenv("VIRUSTOTAL_API_KEY")
@@ -30,32 +35,35 @@ class SecOpsAIClient:
             api_version=self.api_version,
             azure_endpoint=self.endpoint,
             api_key=self.subscription_key,
+            http_client=_build_httpx_client(),
         )
     
     def chat_completion(
-        self, 
-        messages: List[Dict[str, str]], 
-        max_tokens: int = 16384,
-        temperature: float = 0.7
-    ) -> str:
+        self,
+        messages: List[Dict[str, str]],
+        max_completion_tokens: int = 16384,
+        temperature: Optional[float] = None,
+    ) -> Optional[str]:
         """
         Send a chat completion request to Azure OpenAI.
-        
-        Args:
-            messages: List of message dictionaries with 'role' and 'content'
-            max_tokens: Maximum tokens for completion
-            temperature: Sampling temperature (0.0 to 1.0)
-            
-        Returns:
-            The assistant's response content
+
+        Uses ``max_completion_tokens`` and ``model=<deployment>`` like the standard org snippet.
+        Omit ``temperature`` unless set — some models reject it.
         """
         try:
-            response = self.client.chat.completions.create(
-                messages=messages,
-                max_completion_tokens=max_tokens,
-                model=self.deployment,
-                temperature=temperature
-            )
+            kwargs: Dict[str, Any] = {
+                "messages": messages,
+                "max_completion_tokens": max_completion_tokens,
+                "model": self.deployment,
+            }
+            resolved_temp = temperature
+            if resolved_temp is None:
+                raw = os.getenv("AZURE_OPENAI_TEMPERATURE")
+                if raw is not None and str(raw).strip() != "":
+                    resolved_temp = float(raw)
+            if resolved_temp is not None:
+                kwargs["temperature"] = resolved_temp
+            response = self.client.chat.completions.create(**kwargs)
             return response.choices[0].message.content
         except Exception as e:
             print(f"Error calling Azure OpenAI: {e}")

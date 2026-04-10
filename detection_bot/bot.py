@@ -139,7 +139,7 @@ def generate_rule(
 
 
 def _extract_code_block(text: str) -> str:
-    """Pull the first fenced code block out of Claude's response, or return as-is."""
+    """Pull the first fenced code block out of the LLM response, or return as-is."""
     match = re.search(r"```[\w]*\n(.*?)```", text, re.DOTALL)
     if match:
         return match.group(1).strip()
