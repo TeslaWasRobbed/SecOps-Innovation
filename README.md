@@ -1,29 +1,22 @@
 # 🛡️ SecOps Innovation Platform
 
-**Advanced Threat Intelligence & Actor Monitoring Platform**
+**Threat Intelligence & Actor Monitoring Platform**
 
-A comprehensive cybersecurity intelligence platform that combines MITRE ATT&CK framework with Microsoft threat intelligence, automated threat digests, and real-time actor monitoring.
+A focused cybersecurity intelligence platform featuring automated threat digests and an interactive threat actor database with a game-like character select interface.
 
 ## ✨ Features
 
-- **🏠 Dynamic Homepage**: Central hub with navigation to all platform features
 - **📊 Threat Digest**: Automated intelligence reports combining CISA KEV and curated RSS feeds
-- **🎯 Actor Watch**: Comprehensive threat actor profiles with TTPs and defensive recommendations
-- **📈 Live Dashboard**: Real-time monitoring of threat actor activity
-- **🔄 Auto-Updates**: Homepage automatically updates when new content is generated
-- **📱 Mobile Responsive**: Optimized for all devices with touch-friendly interfaces
+- **🎮 Actor Character Select**: Game-like interface for browsing threat actor profiles
+- **🎯 Actor Intelligence**: Comprehensive threat actor profiles with TTPs and defensive recommendations
 - **📄 Multiple Formats**: HTML, PDF, and Markdown exports
 - **⚡ Performance**: Smart caching, retry logic, and feed deduplication
 
 ## 🚀 Quick Start
 
-### 1. Initialize Platform
+### 1. Install Dependencies
 ```bash
-# Install dependencies
 pip install -r requirements.txt
-
-# Initialize the complete platform
-python launch.py init --open
 ```
 
 ### 2. Configure Environment
@@ -38,51 +31,37 @@ ANTHROPIC_API_KEY=your_anthropic_key  # For Claude models
 FEEDS_CACHE_ENABLED=true              # Enable caching for development
 ```
 
-### 3. Start Using the Platform
+### 3. Generate Content
 ```bash
-# Start web server
-python launch.py serve
+# Generate threat digest with character select
+python -m secops digest --days 7
 
-# Generate threat digest
-python launch.py digest --pdf
-
-# Get actor intelligence
-python launch.py actor "APT29" --recommendations
-
-# Open monitoring dashboard
-python launch.py dashboard --open
+# Get specific actor intelligence
+python -m secops actor "APT29" --recommendations
 ```
 
 ## 🎮 Platform Commands
 
 ### Main Commands
 ```bash
-python launch.py init [--open]           # Initialize platform
-python launch.py serve [--port 8000]     # Start web server
-python launch.py digest [--days 7] [--pdf] # Generate threat digest
-python launch.py actor [NAME] [OPTIONS]  # Actor intelligence
-python launch.py dashboard [--open]      # Generate monitoring dashboard
+python -m secops digest [--days 7] [--pdf]      # Generate threat digest
+python -m secops actor [NAME] [OPTIONS]         # Actor intelligence
 ```
 
 ### Actor Intelligence Options
 ```bash
-python launch.py actor "APT29" --recommendations  # Get detailed profile
-python launch.py actor "FIN7" --timeline         # Show activity timeline
-python launch.py actor --search "lazarus"        # Search for actors
+python -m secops actor "APT29" --recommendations  # Get detailed profile
+python -m secops actor "FIN7" --timeline         # Show activity timeline
+python -m secops actor --search "lazarus"        # Search for actors
 ```
 
 ## 🏗️ Platform Architecture
-
-### Homepage System (`homepage/`)
-- **Dynamic Content Scanning**: Automatically discovers threat digests and actor profiles
-- **Interactive Navigation**: Pills/cards for easy navigation between sections
-- **Real-time Stats**: Live metrics on tracked actors and generated content
-- **Auto-refresh**: Updates every 5 minutes with new content
 
 ### Threat Digest (`threat_digest/`)
 - **Multi-source Intelligence**: CISA KEV + curated RSS feeds
 - **LLM Summarization**: AI-powered analysis and structuring
 - **Interactive Reports**: Charts, progress bars, and mobile-optimized UI
+- **Character Select Interface**: Game-like actor database navigation
 - **Export Options**: HTML, PDF, and JSON formats
 
 ### Actor Watch (`actor_watch/`)
@@ -92,7 +71,6 @@ python launch.py actor --search "lazarus"        # Search for actors
 - **Defensive Recommendations**: Actionable security guidance
 
 ### Enhanced Features
-- **Auto-Update System**: Homepage refreshes when new content is generated
 - **Caching Layer**: Smart feed caching with configurable TTL
 - **Error Handling**: Comprehensive retry logic and graceful degradation
 - **Mobile Optimization**: Touch-friendly interfaces and responsive design
@@ -101,16 +79,15 @@ python launch.py actor --search "lazarus"        # Search for actors
 
 ```
 SecOps Innovation/
-├── index.html                    # Main homepage
 ├── output/
 │   ├── threat_digest/
-│   │   ├── digest_2026-04-10.html
+│   │   ├── digest_2026-04-10.html  # Main digest with character select
 │   │   ├── digest_2026-04-10.pdf
 │   │   └── digest_2026-04-10.json
 │   └── actor_watch/
 │       ├── APT29.md
 │       ├── FIN7_timeline.md
-│       └── dashboard.html
+│       └── Storm_1175.md
 └── company_profile.yaml         # Organization configuration
 ```
 
@@ -175,28 +152,25 @@ The platform can be extended with custom APIs for:
 
 ## 🚦 Getting Started Workflow
 
-1. **Initialize**: `python launch.py init --open`
-2. **Configure**: Edit `.env` and `company_profile.yaml`
-3. **Generate Content**: 
-   - `python launch.py digest --pdf`
-   - `python launch.py actor "APT29" --recommendations`
-4. **Monitor**: `python launch.py dashboard --open`
-5. **Serve**: `python launch.py serve` for web access
+1. **Configure**: Edit `.env` and `company_profile.yaml`
+2. **Generate Digest**: `python -m secops digest --pdf`
+3. **Explore Actors**: Open the HTML digest and click the second navigation dot
+4. **Get Specific Intelligence**: `python -m secops actor "APT29" --recommendations`
 
 ## 📊 Platform Statistics
 
-After initialization, your homepage will show:
+The platform provides:
 - **Total Threat Actors Tracked**: 100+ from MITRE ATT&CK and Microsoft
 - **Intelligence Sources**: CISA KEV, 10+ curated RSS feeds
 - **Export Formats**: HTML, PDF, Markdown, JSON
-- **Update Frequency**: Real-time with auto-refresh
+- **Interactive Interface**: Game-like character select for threat actors
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/amazing-feature`
 3. Make your changes
-4. Test thoroughly: `python launch.py init && python launch.py serve`
+4. Test thoroughly: `python -m secops digest`
 5. Submit a pull request
 
 ## 📄 License
