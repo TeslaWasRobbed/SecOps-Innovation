@@ -9,10 +9,33 @@ A focused cybersecurity intelligence platform featuring automated threat digests
 - **📊 Threat Digest**: Automated intelligence reports combining CISA KEV and curated RSS feeds
 - **🎮 Actor Character Select**: Game-like interface for browsing threat actor profiles
 - **🎯 Actor Intelligence**: Comprehensive threat actor profiles with TTPs and defensive recommendations
+- **Sentinel Detection Drafts**: Generate disabled, review-first Microsoft Sentinel analytic rule YAML from digest items
 - **📄 Multiple Formats**: HTML, PDF, and Markdown exports
 - **⚡ Performance**: Smart caching, retry logic, and feed deduplication
 
 ## 🚀 Quick Start
+
+For Azure Linux VM deployment, see [AZURE_VM_WEBAPP.md](AZURE_VM_WEBAPP.md).
+
+Linux quick start:
+
+```bash
+chmod +x setup.sh generate_digest.sh start_workbench.sh cleanup_workspace.sh
+./setup.sh
+./generate_digest.sh --days 7
+./start_workbench.sh --host 0.0.0.0 --port 8765 --no-open
+```
+
+For the easiest setup on Windows, use the self-service scripts:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\setup.ps1
+.\generate_digest.ps1
+.\start_workbench.ps1
+```
+
+See [SELF_SERVICE_SETUP.md](SELF_SERVICE_SETUP.md) for the full step-by-step guide.
 
 ### 1. Install Dependencies
 ```bash
@@ -23,7 +46,7 @@ pip install -r requirements.txt
 Copy `.env.example` to `.env` and configure:
 ```bash
 # Required
-AZURE_OPENAI_API_KEY=your_key_here
+AZURE_OPENAI_KEY=your_key_here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
 
 # Optional
@@ -33,11 +56,46 @@ FEEDS_CACHE_ENABLED=true              # Enable caching for development
 
 ### 3. Generate Content
 ```bash
-# Generate threat digest with character select
+# Guided menu for non-technical users
+python -m secops ui
+
+# Browser workbench for digest review and detection drafts
+python -m secops web
+
+# Generate the latest threat digest and refresh the dashboard
 python -m secops digest --days 7
+
+# Open output/threat_digest/index.html for the latest report.
+# The archive is output/threat_digest/history.html, and the latest report is also copied to output/threat_digest/latest.html.
+
+# Refresh and view actor mentions across archived digests
+python -m secops tracking --refresh
+
+# List digest items and generate a Sentinel detection YAML draft
+python -m secops detection --latest --list
+python -m secops detection --latest --item 1
 
 # Get specific actor intelligence
 python -m secops actor "APT29" --recommendations
+```
+
+Script equivalents:
+
+```powershell
+.\generate_digest.ps1          # Generate a 7-day digest
+.\generate_digest.ps1 -NoLlm   # Feed-only digest
+.\start_workbench.ps1          # Start browser workbench
+.\setup.ps1                    # Re-run setup/check dependencies
+.\cleanup_workspace.ps1        # Remove transient caches
+```
+
+Linux script equivalents:
+
+```bash
+./generate_digest.sh --days 7
+./generate_digest.sh --days 7 --no-llm
+./start_workbench.sh --host 0.0.0.0 --port 8765 --no-open
+./cleanup_workspace.sh
 ```
 
 ## 🎮 Platform Commands
@@ -46,7 +104,30 @@ python -m secops actor "APT29" --recommendations
 ```bash
 python -m secops digest [--days 7] [--pdf]      # Generate threat digest
 python -m secops actor [NAME] [OPTIONS]         # Actor intelligence
+python -m secops tracking [--refresh]           # Actor mentions across digests
+python -m secops detection [OPTIONS]            # Sentinel YAML detection drafts
+python -m secops web [--port 8765]              # Local browser workbench
+python -m secops ui                             # Guided command-line menu
 ```
+
+### Detection Draft Options
+```bash
+python -m secops detection --latest --list          # Show digest items you can build detections from
+python -m secops detection --latest --item 1        # Generate one disabled Sentinel YAML draft
+python -m secops detection --title "Threat" --context "Details..."  # Manual rule request
+python -m secops detection --index                 # Rebuild output/detections/index.html
+```
+
+Drafts are saved under `output/detections/drafts/YYYY-MM-DD/`. Open `output/detections/index.html` to review and copy YAML.
+
+### Browser Workbench
+```bash
+python -m secops web
+```
+
+The workbench runs locally at `http://127.0.0.1:8765/`. It lists the latest digest items, generates detection drafts through the Python backend, and shows generated YAML for review/copy.
+
+On an Azure VM, run `.\start_workbench.ps1 -HostName 0.0.0.0 -Port 8765` behind your chosen network/auth controls. See [AZURE_VM_WEBAPP.md](AZURE_VM_WEBAPP.md).
 
 ### Actor Intelligence Options
 ```bash
@@ -70,6 +151,12 @@ python -m secops actor --search "lazarus"        # Search for actors
 - **Timeline Analysis**: Historical activity patterns
 - **Defensive Recommendations**: Actionable security guidance
 
+### Detection Drafts (`detection/`)
+- **Analyst Selection**: Choose a threat item from the latest generated digest
+- **Template-Guided Output**: Uses `Templates/AnalyticRuleGuide` and `company_profile.yaml`
+- **Review First**: Rules default to `enabled: false` and are saved for copy/paste review
+- **Browser Workbench**: Local web UI for selecting digest items and generating drafts
+
 ### Enhanced Features
 - **Caching Layer**: Smart feed caching with configurable TTL
 - **Error Handling**: Comprehensive retry logic and graceful degradation
@@ -81,13 +168,21 @@ python -m secops actor --search "lazarus"        # Search for actors
 SecOps Innovation/
 ├── output/
 │   ├── threat_digest/
-│   │   ├── digest_2026-04-10.html  # Main digest with character select
+│   │   ├── index.html              # Latest digest report
+│   │   ├── history.html            # Archived digest list
+│   │   ├── latest.html             # Copy of the latest generated digest
+│   │   ├── digest_2026-04-10.html  # Archived dated digest
 │   │   ├── digest_2026-04-10.pdf
-│   │   └── digest_2026-04-10.json
-│   └── actor_watch/
-│       ├── APT29.md
-│       ├── FIN7_timeline.md
-│       └── Storm_1175.md
+│   │   └── digest_2026-04-10.md
+│   ├── actor_watch/
+│   │   ├── APT29.md
+│   │   ├── FIN7_timeline.md
+│   │   └── Storm_1175.md
+│   └── detections/
+│       ├── index.html              # Detection draft review page
+│       └── drafts/
+│           └── 2026-04-10/
+│               └── valid_example-rule.yaml
 └── company_profile.yaml         # Organization configuration
 ```
 
@@ -97,9 +192,9 @@ SecOps Innovation/
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `AZURE_OPENAI_API_KEY` | Azure OpenAI API key | Required |
+| `AZURE_OPENAI_KEY` | Azure OpenAI API key | Required |
 | `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint URL | Required |
-| `AZURE_OPENAI_DEPLOYMENT_NAME` | Deployment name | gpt-4 |
+| `AZURE_OPENAI_DEPLOYMENT` | Deployment name | gpt-5 |
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude | Optional |
 | `FEEDS_CACHE_ENABLED` | Enable feed caching | false |
 | `DIGEST_MAX_COMPLETION_TOKENS` | Max tokens for digest | 4000 |
@@ -154,8 +249,10 @@ The platform can be extended with custom APIs for:
 
 1. **Configure**: Edit `.env` and `company_profile.yaml`
 2. **Generate Digest**: `python -m secops digest --pdf`
-3. **Explore Actors**: Open the HTML digest and click the second navigation dot
-4. **Get Specific Intelligence**: `python -m secops actor "APT29" --recommendations`
+3. **Review Dashboard**: Open `output/threat_digest/index.html`; previous dated reports remain in `output/threat_digest/history.html`
+4. **Generate Detection Draft**: `python -m secops detection --latest --list`, then `python -m secops detection --latest --item <number>`
+5. **Review YAML**: Open `output/detections/index.html` and copy/paste the draft after analyst review
+6. **Get Specific Intelligence**: `python -m secops actor "APT29" --recommendations`
 
 ## 📊 Platform Statistics
 

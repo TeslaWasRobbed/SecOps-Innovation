@@ -1,0 +1,547 @@
+You are helping me create or update Microsoft Sentinel scheduled analytics rule YAML.
+
+Follow this standard exactly.
+
+1. Output format
+
+- Provide the full YAML only, copy/paste ready.
+- Do not provide partial snippets unless explicitly asked.
+- Use clean comments to divide the YAML into sections.
+- Keep comments useful but not excessive.
+- Preserve the existing rule ID unless I explicitly ask for a new rule.
+- Increment the version number when making material changes.
+- Add a changelog entry at the bottom for every version change.
+- Use valid YAML syntax.
+- Escape special characters correctly where required.
+- Do not HTML-encode symbols. For example, use ">" not "&gt;" and "&" not "&amp;".
+
+2. Rule posture
+
+Include the following YAML fields:
+
+- id
+- name
+- description
+- enabled
+- status
+- severity
+- requiredDataConnectors
+- queryFrequency
+- queryPeriod
+- query
+- triggerOperator
+- triggerThreshold
+- tactics
+- techniques
+- tags
+- entityMappings
+- alertDetailsOverride
+- customDetails
+- eventGroupingSettings
+- incidentConfiguration
+- suppressionEnabled
+- suppressionDuration
+- version
+- kind
+- changelog comments
+
+Default posture:
+
+- Set enabled: false by default unless I explicitly request enabled: true.
+- Set status: Available unless there is a reason not to.
+- Use kind: Scheduled.
+- Include alertDetailsOverride by default.
+- Make alertDetailsOverride readable, useful, and actionable for SOC analysts.
+
+3. Description standard
+
+The description must include:
+
+- "DO NOT EDIT IN PORTAL - MANAGED VIA GIT REPO."
+- A plain-English summary of what the rule detects.
+- The main data sources/events being used.
+- Why the behaviour matters from a security perspective.
+- Likely benign explanations.
+- Potential malicious explanations.
+- Clear analyst investigation steps.
+
+Analyst investigation steps must be practical and written as a numbered list.
+
+They should tell analysts:
+
+- What fields to review first.
+- How to validate whether the activity is expected.
+- What related logs, systems, or dashboards to check.
+- What signs would increase suspicion.
+- What remediation or containment actions may be appropriate.
+- What evidence should be captured or documented.
+
+Example investigation section style:
+
+Analyst investigation steps:
+  1. Review AccountName, DisplayName, UserPrincipalName, DeviceName, SourceIP, FirstSeen, LastSeen, and EventCount to understand the affected entity and activity window.
+  2. Validate whether the behaviour aligns with expected business activity, known maintenance, password resets, application behaviour, or approved administrative actions.
+  3. Review related sign-in logs, endpoint timeline, audit logs, email events, cloud activity, or network logs depending on the detection source.
+  4. Check for suspicious indicators such as unusual source locations, unexpected devices, impossible travel, repeated failures, abnormal process chains, suspicious command lines, or access to sensitive resources.
+  5. If suspicious, preserve relevant evidence, escalate according to SOC process, and consider containment actions such as session revocation, password reset, device isolation, IP blocking, or disabling affected credentials.
+  6. Document the conclusion, supporting evidence, and any remediation actions taken.
+
+4. KQL query standard
+
+- Add useful KQL comments at the top explaining the detection logic.
+- Use let statements for reusable logic.
+- Normalise fields where joins or comparisons may be case-sensitive.
+- Use case-insensitive comparisons where appropriate, for example =~ and !~.
+- Use tostring(), tolower(), trim(), coalesce(), column_ifexists(), iff(), isempty(), isnotempty(), replace_regex(), split(), and datetime_diff() where needed to avoid null/schema issues and improve readability.
+- Avoid fragile joins where a more reliable key exists.
+- Prefer enriching results with IdentityInfo, DeviceInfo, EmailEvents, SigninLogs, AuditLogs, or other context tables where useful.
+- Use summarize to produce one clear alert row per logical entity, usually per account, device, IP, file, mailbox, or source.
+- Ensure final projected columns are analyst-friendly.
+- Include both raw and normalised values where enrichment or parsing is performed.
+- Include a clear match/enrichment status where joins are used.
+- Include a clear RecommendedReview field where useful.
+- Use order by on the most useful triage field, usually AttemptCount, EventCount, RiskScore, Severity, or LastSeen.
+- Do not over-engineer the query.
+- Prioritise maintainability and analyst readability.
+
+5. Query output/log clarity standard
+
+The final project should make alert logs easy to understand.
+
+Where relevant, include fields such as:
+
+- AccountName
+- DisplayName
+- UserPrincipalName
+- SAMAccountName
+- Raw account/source values
+- Normalised join values
+- IdentityMatchStatus
+- DeviceName
+- SourceIP
+- SourceHost
+- DestinationHost
+- FileName
+- FilePath
+- SHA256
+- URL
+- Sender
+- Recipient
+- Mailbox
+- FailureCode
+- FailureReason
+- ActionType
+- Result
+- AttemptCount
+- EventCount
+- HostCount
+- SourceCount
+- FirstSeen
+- LastSeen
+- TimespanMinutes
+- Department
+- JobTitle
+- Manager
+- AccountSID
+- AccountObjectId
+- DeviceId
+- IsAccountEnabled
+- IsServiceAccount
+- RecommendedReview
+
+Do not include every field blindly. Include the fields that are useful for the specific detection.
+
+6. Identity enrichment standard
+
+When enriching account-based detections:
+
+- Use IdentityInfo where available.
+- If joining by SAMAccountName, normalise both sides:
+  - lowercase
+  - trim whitespace
+  - strip expected suffixes such as trailing "-a" where requested
+- Preserve the original raw account value.
+- Preserve the normalised account value.
+- Add IdentityMatchStatus so analysts know whether enrichment succeeded.
+- Prefer joining on stable IDs such as SID, ObjectId, or AadUserId if available.
+- Use SAMAccountName when that is the field present in both tables.
+- Use coalesce() to ensure key alert fields still populate if enrichment fails.
+
+Example SAM normalisation function:
+
+let NormalizeSam = (Account:string) {
+    replace_regex(
+        tolower(trim(" ", tostring(Account))),
+        @"-a$",
+        ""
+    )
+};
+
+Example enrichment pattern:
+
+let IdentityLookup =
+    IdentityInfo
+    | where TimeGenerated > ago(30d)
+    | where isnotempty(SAMAccountName)
+    | extend NormalisedIdentitySAM = NormalizeSam(SAMAccountName)
+    | summarize arg_max(TimeGenerated, *) by NormalisedIdentitySAM
+    | project
+        NormalisedIdentitySAM,
+        IdentitySAMAccountName = SAMAccountName,
+        IdentityAccountName = AccountName,
+        IdentityUPN = AccountUPN,
+        IdentityDisplayName = AccountDisplayName,
+        AccountSID,
+        AccountObjectId,
+        Department,
+        JobTitle,
+        Manager,
+        IsAccountEnabled,
+        IsServiceAccount;
+
+7. Alert details override standard
+
+Include alertDetailsOverride by default unless I explicitly ask not to.
+
+The alertDetailsOverride must be useful, readable, and actionable for SOC analysts.
+
+Alert title requirements:
+
+- Must retain the MITRE tactic/category prefix where the rule name uses one.
+- Must clearly explain the affected entity.
+- Must describe the behaviour.
+- Should include the most useful count, source, or severity indicator where available.
+- Must be concise.
+- Must not be generic.
+- Must not simply repeat the rule name.
+
+Alert description requirements:
+
+- Must explain what happened in plain English.
+- Must identify the affected account/device/source where possible.
+- Must include the key count or scope.
+- Must explain why the behaviour matters.
+- Must tell analysts what to check next.
+- Must use only fields projected by the final KQL query.
+- Must use a maximum of 3 dynamic variables per alert field.
+- Must still read well if enrichment is incomplete, so the query should use coalesce() for dynamic fields.
+
+Required structure:
+
+alertDetailsOverride:
+  alertDisplayNameFormat: "[<Tactic>] <short behaviour> for {{EntityField}} - <key metric/context>"
+  alertDescriptionFormat: "{{EntityField}} generated <clear behaviour> involving {{CountField}} event(s). Review <specific fields/logs/systems> to determine whether this is expected or suspicious."
+
+Good example for expired password NTLM spikes:
+
+alertDetailsOverride:
+  alertDisplayNameFormat: "[Persistence] Expired password NTLM spike for {{AccountName}} - {{AttemptCount}} attempts"
+  alertDescriptionFormat: "{{AccountName}} generated {{AttemptCount}} NTLM authentication failures using an expired password across {{HostCount}} source host(s). Review source hosts, stale services, scheduled tasks, scripts, mapped drives, and any recent password expiry or reset activity."
+
+Good example for suspicious sign-in activity:
+
+alertDetailsOverride:
+  alertDisplayNameFormat: "[InitialAccess] Suspicious sign-in activity for {{AccountName}} from {{SourceIP}}"
+  alertDescriptionFormat: "{{AccountName}} generated suspicious sign-in activity from {{SourceIP}} with {{EventCount}} related event(s). Review sign-in logs, location, device context, MFA result, conditional access outcome, and recent account activity."
+
+Good example for endpoint execution detections:
+
+alertDetailsOverride:
+  alertDisplayNameFormat: "[Execution] Suspicious process activity on {{DeviceName}} by {{AccountName}}"
+  alertDescriptionFormat: "{{AccountName}} triggered suspicious process activity on {{DeviceName}} involving {{EventCount}} related event(s). Review process command line, parent process, file path, hash reputation, and surrounding device timeline."
+
+Bad alertDetailsOverride examples:
+
+- "Alert for {{AccountName}}"
+- "Suspicious activity detected"
+- "Rule triggered"
+- "{{AccountName}} triggered this rule"
+- Long titles with too many dynamic variables
+- Descriptions that do not tell analysts what to check next
+
+8. Entity mappings
+
+- Add relevant Sentinel entity mappings.
+- Do not create entity mappings for columns that are not projected by the query.
+- For Account entities, map what is available:
+  - Name -> AccountName
+  - UPNSuffix -> UPNSuffix, if split out
+  - Sid -> AccountSID
+  - AadUserId -> AccountObjectId
+  - FullName -> DisplayName, where appropriate
+- For Host entities, map:
+  - HostName -> DeviceName or HostName
+  - FullName -> FQDN, where available
+  - AzureID -> AzureResourceId, where available
+  - OMSAgentID -> DeviceId, where appropriate
+- For IP entities, map:
+  - Address -> SourceIP, DestinationIP, IPAddress, or relevant IP column
+- For URL entities, map:
+  - Url -> URL
+- For File entities, map:
+  - Name -> FileName
+  - Directory -> FolderPath/FilePath where appropriate
+- For Mailbox entities, map mailbox fields where useful.
+- Keep entity mappings clean and relevant.
+
+9. Custom details standard
+
+Add useful customDetails for triage.
+
+Rules:
+
+- Custom detail key names must be 20 characters or fewer.
+- Use readable names.
+- Only reference fields projected by the final KQL query.
+- Do not include noisy fields unless useful.
+- Include enough context for the alert sidebar to be useful without opening Logs immediately.
+
+Useful custom detail examples:
+
+customDetails:
+  Account: AccountName
+  Display_Name: DisplayName
+  UPN: UserPrincipalName
+  SAM: SAMAccountName
+  Raw_SAM: RawSAMAccountName
+  Norm_SAM: NormalisedSAM
+  Match_Status: IdentityMatchStatus
+  Device: DeviceName
+  Src_IP: SourceIP
+  Src_Host: SourceHost
+  Dst_Host: DestinationHost
+  Attempts: AttemptCount
+  Event_Count: EventCount
+  Host_Count: HostCount
+  Source_Count: SourceCount
+  First_Seen: FirstSeen
+  Last_Seen: LastSeen
+  Timespan_Min: TimespanMinutes
+  Failure_Code: FailureCode
+  Failure_Reason: FailureReason
+  Action: ActionType
+  Result: Result
+  Department: Department
+  Job_Title: JobTitle
+  Manager: Manager
+  Is_Enabled: IsAccountEnabled
+  Is_Service_Acct: IsServiceAccount
+  Review: RecommendedReview
+
+10. Event grouping
+
+Use this standard unless there is a strong reason not to:
+
+eventGroupingSettings:
+  aggregationKind: AlertPerResult
+  # AlertPerResult ensures each matching entity gets its own meaningful alert.
+
+Use AlertPerResult when the query produces one row per account/device/source and each row should become a meaningful alert.
+
+11. Incident configuration
+
+Use this standard unless I specify otherwise:
+
+incidentConfiguration:
+  createIncident: true
+  groupingConfiguration:
+    enabled: true
+    reopenClosedIncident: false
+    lookbackDuration: PT5H
+    matchingMethod: AllEntities
+
+If grouping by entities is not appropriate, explain why in a YAML comment and use the safest valid configuration.
+
+12. Suppression
+
+Use this standard unless I specify otherwise:
+
+suppressionEnabled: false
+suppressionDuration: PT1H
+
+Do not enable suppression unless requested or clearly justified.
+
+13. Tags and metadata
+
+Use this structure:
+
+tags:
+- ManagedBy:Repository
+- Owner:SOC
+- Category:<RelevantCategory>
+- Version:<VersionNumber>
+
+Use a relevant category, for example:
+
+- Identity
+- Endpoint
+- Cloud
+- Email
+- Network
+- DataProtection
+- Persistence
+- LateralMovement
+- InitialAccess
+- Exfiltration
+- PrivilegeEscalation
+- CredentialAccess
+- DefenceEvasion
+
+Keep the Version tag aligned with the version field.
+
+14. MITRE ATT&CK
+
+- Include relevant tactics and techniques.
+- Do not over-map.
+- Prefer the most directly relevant tactic and technique.
+- Use valid Sentinel tactic and technique format.
+- If unsure, choose the most appropriate mapping and avoid adding speculative mappings.
+- The alert title should retain the main tactic prefix where used in the rule name.
+
+15. Versioning and changelog
+
+- Increment the patch version for small improvements, tuning, comments, customDetails updates, or alertDetailsOverride improvements.
+- Increment the minor version for material detection logic changes.
+- Increment the major version only for significant redesigns or breaking changes.
+- Keep the YAML version field aligned with the Version tag.
+- Add changelog comments at the bottom in this style:
+
+# --- Changelog ---
+# 1.0.0 - YYYY-MM-DD - Initial release.
+# 1.0.1 - YYYY-MM-DD - Short description of change.
+
+16. Style preferences
+
+- Keep the rule practical for SOC analysts.
+- Prioritise clarity over cleverness.
+- Avoid over-engineering the KQL.
+- Make the alert output easy to read in Sentinel.
+- Make investigation steps specific enough for a junior analyst to follow.
+- Include useful, readable, SOC-actionable alertDetailsOverride by default.
+- Do not change the meaning of the detection unless asked.
+- If updating an existing YAML, preserve the original intent and only improve the requested parts.
+- Ensure all dynamic alert fields, customDetails, and entity mappings reference columns projected by the query.
+- Avoid unsupported YAML fields or invalid Sentinel schema.
+- Use concise but clear comments.
+
+Template for all
+id: 00000000-0000-0000-0000-000000000000
+# ⚠️ Replace with a unique GUID from guidgen.com (do not leave as zeros).
+
+name: "[Tactic] Alert Name"
+# Standard: [Tactic] Alert Name (e.g., [Persistence] User added to PIM)
+
+description: |
+  DO NOT EDIT IN PORTAL - MANAGED VIA GIT REPO.
+
+  <Describe what the detection finds>
+  <Explain why it matters (risk/behavior/attacker intent)>
+  <Add expected SOC analyst action or playbook if applicable>
+
+# --- Core rule posture ---
+enabled: true
+status: Available # Available | InPreview | Experimental
+
+severity: Medium # Informational | Low | Medium | High
+
+# --- Data source (documentation aid; not strictly required for deploy) ---
+requiredDataConnectors:
+- connectorId: AzureActiveDirectory
+  dataTypes:
+  - SigninLogs
+
+# --- Schedule window ---
+queryFrequency: PT1H # How often rule runs
+queryPeriod: PT2H # Lookback window (should be >= frequency to avoid gaps)
+
+# --- KQL ---
+query: |
+  // Paste KQL below.
+  // Ensure all columns referenced in entityMappings, customDetails,
+  // and alertDetailsOverride exist in the query output.
+  <KQL_QUERY_HERE>
+
+# --- Alerting threshold ---
+triggerOperator: GreaterThan # GreaterThan | GreaterThanOrEqual | LessThan | LessThanOrEqual | Equal | NotEqual
+triggerThreshold: 0 # Alert if results > 0
+
+# --- MITRE ATT&CK ---
+tactics:
+- InitialAccess # Standard MITRE tactic names
+techniques:
+- T1078 # Technique IDs for ARM template deployment
+
+# --- Tags/metadata ---
+tags:
+- ManagedBy:Repository
+- Owner:SOC
+- Category:Identity
+- Version:1.0.0
+
+# --- Entity mappings (columns must exist in query output) ---
+entityMappings:
+- entityType: Account
+  fieldMappings:
+  - identifier: Name
+    columnName: UserPrincipalName
+# - entityType: IP
+#   fieldMappings:
+#     - identifier: Address
+#       columnName: IPAddress
+# - entityType: Host
+#   fieldMappings:
+#     - identifier: HostName
+#       columnName: HostName
+
+# --- Dynamic alert title & description (columns must exist in query output) ---
+# Surfaces per-result context directly in the alert headline.
+# Remove block entirely if you prefer static title/description.
+alertDetailsOverride:
+  alertDisplayNameFormat: "{{UserPrincipalName}} - <short description of activity>"
+  alertDescriptionFormat: "User {{UserPrincipalName}} <describe behaviour> from {{IPAddress}}"
+  # alertSeverityColumnName: SeverityColumn   # Uncomment to drive severity from a query column
+
+  # --- Custom details (columns must exist in query output) ---
+  # Key/value pairs surfaced in the incident panel for fast analyst triage.
+  # Remove any entries whose columns are not present in your query.
+customDetails:
+  SourceIP: IPAddress
+  # UserAgent:   UserAgentString
+  # TargetResource: ResourceName
+
+  # --- Event grouping ---
+eventGroupingSettings:
+  aggregationKind: SingleAlert
+  # SingleAlert:    1 incident for all results in a single rule run
+  # AlertPerResult: 1 incident per result row (use with caution on high-volume queries)
+
+  # --- Incident creation & grouping behavior ---
+incidentConfiguration:
+  createIncident: true
+  groupingConfiguration:
+    enabled: true
+    reopenClosedIncident: false
+    lookbackDuration: PT5H
+    matchingMethod: AllEntities
+    # matchingMethod options:
+    #   AllEntities  - group only if ALL entities match (strictest)
+    #   AnyAlert     - group all alerts from this rule together
+    #   Selected     - group by specific entity types (uncomment groupByEntities below)
+    # groupByEntities:
+    #   - Account
+    #   - IP
+    #   - Host
+    #   - Url
+
+    # --- Suppression (tuning) ---
+suppressionEnabled: false
+suppressionDuration: PT1H
+
+# --- Versioning (yours) ---
+version: 1.0.0
+
+# --- Rule type ---
+kind: Scheduled
+
+# --- Changelog ---
+# 1.0.0 - YYYY-MM-DD - Initial release

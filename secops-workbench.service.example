@@ -1,0 +1,18 @@
+[Unit]
+Description=SecOps Innovation Workbench
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=secops
+Group=secops
+WorkingDirectory=/opt/secops-innovation
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/secops-innovation/.venv/bin/python -m secops web --host 0.0.0.0 --port 8765 --no-open
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+

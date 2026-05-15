@@ -11,6 +11,7 @@ import anthropic
 from rich.console import Console
 
 from shared.output import print_panel, save_markdown
+from threat_digest.dashboard import update_digest_dashboard
 from threat_digest.digest import build_digest
 from threat_digest.html_report import build_digest_html, generate_pdf
 from threat_digest.profile import load_company_profile, resolve_profile_path
@@ -144,6 +145,29 @@ def main(argv: list[str] | None = None) -> int:
         )
         html_path.write_text(html_doc, encoding="utf-8")
         console.print(f"[dim]Saved HTML -> {html_path}[/dim]")
+
+        dashboard_path = update_digest_dashboard(out_dir, html_path)
+        console.print(f"[dim]Updated dashboard -> {dashboard_path}[/dim]")
+        
+        # Auto-update actor tracking data
+        try:
+            from shared.actor_tracking import update_actor_tracking
+            console.print("[dim]Updating actor tracking data...[/dim]")
+            tracking_data = update_actor_tracking()
+            total_mentions = sum(actor.get('total_mentions', 0) for actor in tracking_data.get('actors', {}).values())
+            if total_mentions > 0:
+                console.print(f"[dim]Found {total_mentions} actor mentions across digests[/dim]")
+            try:
+                from actor_watch.dashboard import generate_actor_dashboard
+
+                actor_dashboard = generate_actor_dashboard(Path("output/actor_watch") / "index.html", args.days)
+                console.print(f"[dim]Updated Actor Watch -> {actor_dashboard}[/dim]")
+            except Exception as e:
+                console.print(f"[yellow]Could not update Actor Watch dashboard: {e}[/yellow]")
+        except ImportError:
+            pass  # Actor tracking module not available
+        except Exception as e:
+            console.print(f"[yellow]Could not update actor tracking: {e}[/yellow]")
         
         # Auto-update homepage
         try:

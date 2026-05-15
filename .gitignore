@@ -1,11 +1,15 @@
 # Environment files
 .env
 .env.local
+.venv/
+venv/
+company_profile.yaml
 
 # Generated outputs (all tools default here)
 output/
 # Legacy per-package output dirs — do not use; ignored if recreated
 */output/
+shared/actor_tracking_data.json
 
 # Python
 __pycache__/

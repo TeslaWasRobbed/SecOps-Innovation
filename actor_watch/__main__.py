@@ -23,8 +23,6 @@ from actor_watch.activity_tracker import (
     format_activity_timeline_markdown,
     search_actor_mentions
 )
-from actor_watch.dashboard import generate_actor_dashboard
-
 console = Console()
 
 
@@ -75,14 +73,23 @@ def main(argv: list[str] | None = None) -> int:
         console.print(f"\n[bold cyan]Threat Actor Dashboard[/bold cyan] — generating HTML dashboard...\n")
         
         from pathlib import Path
-        dashboard_path = Path(args.output_dir) / "dashboard.html"
+        dashboard_path = Path(args.output_dir) / "index.html"
         
         try:
+            from actor_watch.dashboard import generate_actor_dashboard
+
             generated_path = generate_actor_dashboard(dashboard_path, args.days)
             console.print(f"[green]✓[/green] Dashboard generated successfully!")
             console.print(f"[dim]Saved to: {generated_path}[/dim]")
             console.print(f"[dim]Open in browser: file://{Path(generated_path).absolute()}[/dim]\n")
             return 0
+        except ImportError:
+            console.print(
+                "[yellow]Actor dashboard generation is not available in this checkout yet.[/yellow]\n"
+                "[dim]Use [bold]python -m secops actor[/bold] to list actors, or "
+                "[bold]python -m secops actor \"APT29\" --recommendations[/bold] for a profile.[/dim]\n"
+            )
+            return 1
         except Exception as exc:
             console.print(f"[bold red]Error generating dashboard:[/bold red] {exc}")
             return 1

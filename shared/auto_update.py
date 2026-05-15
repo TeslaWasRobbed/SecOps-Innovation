@@ -22,6 +22,11 @@ def update_homepage_after_generation(content_type: str, filename: str) -> None:
         else:
             logger.debug("Homepage not found, skipping auto-update")
             
+    except ModuleNotFoundError as exc:
+        if exc.name == "homepage":
+            logger.debug("Homepage generator not installed, skipping auto-update")
+            return
+        logger.warning(f"Failed to auto-update homepage: {exc}")
     except Exception as exc:
         logger.warning(f"Failed to auto-update homepage: {exc}")
 

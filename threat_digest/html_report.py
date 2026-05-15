@@ -1285,16 +1285,6 @@ body {
   }
 }
 
-/* Character Select Screen */
-.actors-page {
-  display: none;
-  min-height: 100vh;
-  padding: 2rem 0;
-}
-
-.actors-page.active {
-  display: block;
-}
 
 .actors-header {
   text-align: center;
@@ -3157,6 +3147,31 @@ ul.tool-list li { margin: 0.35rem 0; }
   color: var(--text-soft);
   font-weight: 600;
 }
+
+/* Navigation Links */
+.nav-links a:hover {
+  color: var(--accent) !important;
+  background: var(--surface) !important;
+}
+
+/* Financial Actor Mentions */
+.financial-actor-mention {
+  background: linear-gradient(135deg, var(--rose), var(--amber));
+  color: white;
+  padding: 0.2rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(251, 113, 133, 0.3);
+}
+
+.financial-actor-mention:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(251, 113, 133, 0.4);
+  background: linear-gradient(135deg, var(--accent), var(--violet));
+}
 """
 
 
@@ -3232,6 +3247,10 @@ def build_digest_html(
           <h1>{company}</h1>
           <p class="sub">Cyber intelligence briefing · {html.escape(datestamp)}</p>
         </div>
+      </div>
+      <div class="nav-links" style="display: flex; gap: 1rem; align-items: center;">
+        <a href="../actor_watch/index.html" style="color: var(--text-soft); text-decoration: none; padding: 0.5rem 1rem; border-radius: var(--radius-sm); transition: all 0.3s ease; font-weight: 500;">🎯 Actor Watch</a>
+        <a href="history.html" style="color: var(--text-soft); text-decoration: none; padding: 0.5rem 1rem; border-radius: var(--radius-sm); transition: all 0.3s ease; font-weight: 500;">📚 History</a>
       </div>
       <div class="top-controls">
         <button type="button" class="toc-toggle" id="toc-toggle" aria-label="Table of contents">
@@ -3325,33 +3344,6 @@ def build_digest_html(
         </div>
       </article>
       {sidebar_column}
-    </div>
-  </div>
-
-  <!-- Character Select Screen -->
-  <div class="actors-page" id="actors-page">
-    <div class="actors-header">
-      <h1 class="actors-title">🎯 Threat Actor Database</h1>
-      <p class="actors-subtitle">Select an actor to view detailed intelligence profiles</p>
-    </div>
-    
-    <div class="actors-grid" id="actors-grid">
-      <!-- Actor cards will be populated by JavaScript -->
-      <div class="add-actor-card" onclick="showAddActorDialog()">
-        <div class="add-icon">+</div>
-        <div class="add-text">Add New Actor</div>
-        <div class="add-subtext">Search and add threat actors to your database</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Page Navigation -->
-  <div class="page-nav" id="page-nav">
-    <div class="nav-dot active" onclick="showPage('digest')" data-page="digest">
-      <div class="nav-tooltip">Threat Digest</div>
-    </div>
-    <div class="nav-dot" onclick="showPage('actors')" data-page="actors">
-      <div class="nav-tooltip">Threat Actors</div>
     </div>
   </div>
 
@@ -3524,7 +3516,7 @@ def build_digest_html(
     document.addEventListener("click", function (e) {{
       if (e.target.classList.contains("threat-title")) {{
         var title = e.target.textContent;
-        var url = window.location.href.split("#")[0] + "#threat-" + encodeURIComponent(title.toLowerCase().replace(/\s+/g, "-"));
+        var url = window.location.href.split("#")[0] + "#threat-" + encodeURIComponent(title.toLowerCase().replace(/\\s+/g, "-"));
         
         if (navigator.clipboard) {{
           navigator.clipboard.writeText(url).then(function () {{
@@ -3566,7 +3558,7 @@ def build_digest_html(
       // Add IDs to threat titles for direct linking
       var threatTitles = document.querySelectorAll(".threat-title");
       threatTitles.forEach(function (title) {{
-        var id = "threat-" + title.textContent.toLowerCase().replace(/\s+/g, "-");
+        var id = "threat-" + title.textContent.toLowerCase().replace(/\\s+/g, "-");
         title.id = id;
       }});
       
@@ -3760,20 +3752,15 @@ def build_digest_html(
     
     function populateActorsGrid() {{
       const grid = document.getElementById('actors-grid');
-      const addCard = grid.querySelector('.add-actor-card');
       
-      // Clear existing actor cards but keep the add card
+      // Render known actor cards from the bundled actor data only.
       grid.innerHTML = '';
       
-      // Add actor cards
       Object.keys(window.actorData).forEach(actorKey => {{
         const actor = window.actorData[actorKey];
         const card = createActorCard(actor, actorKey);
         grid.appendChild(card);
       }});
-      
-      // Re-add the add card at the end
-      grid.appendChild(addCard);
     }}
     
     function createActorCard(actor, actorKey) {{
@@ -3822,66 +3809,41 @@ def build_digest_html(
       return card;
     }}
     
-    function showAddActorDialog() {{
-      const actorName = prompt('Enter threat actor name to search and add:');
-      if (actorName && actorName.trim()) {{
-        addNewActor(actorName.trim());
-      }}
-    }}
-    
-    function addNewActor(actorName) {{
-      // Simulate adding a new actor (in real implementation, this would call the actor watch API)
-      const actorKey = actorName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-      
-      // Check if actor already exists
-      if (window.actorData[actorKey]) {{
-        alert('Actor already exists in database!');
-        return;
-      }}
-      
-      // Create placeholder actor data
-      window.actorData[actorKey] = {{
-        name: actorName,
-        id: 'TBD',
-        aliases: [actorName],
-        description: `Threat actor profile for ${{actorName}} - data being collected...`,
-        type: 'unknown',
-        techniques: [],
-        tools: [],
-        sectors: [],
-        recent_activity: ['Profile being analyzed...']
+    // Make financial actor mentions clickable and trackable
+    document.addEventListener('DOMContentLoaded', function() {{
+      // Financial actors to track
+      const financialActors = {{
+        'fin7': ['FIN7', 'Carbanak Group', 'Navigator Group'],
+        'fin8': ['FIN8', 'Syssphinx'],
+        'fin6': ['FIN6', 'ITG08', 'Skeleton Spider'],
+        'fin11': ['FIN11', 'TA505'],
+        'fin12': ['FIN12', 'UNC1878'],
+        'carbanak': ['Carbanak', 'Anunak'],
+        'silence': ['Silence', 'Whisper Spider']
       }};
       
-      // Refresh the grid
-      populateActorsGrid();
-      
-      // Show notification
-      showNotification(`Added ${{actorName}} to threat actor database!`, 'success');
-    }}
-    
-    // Make actor mentions clickable
-    document.addEventListener('DOMContentLoaded', function() {{
-      // Find and enhance actor mentions in the content
-      const actorNames = Object.keys(window.actorData);
       const contentElements = document.querySelectorAll('.digest-section p, .digest-section li');
       
       contentElements.forEach(element => {{
         let html = element.innerHTML;
-        actorNames.forEach(actorKey => {{
-          const actor = window.actorData[actorKey];
-          const names = [actor.name, ...actor.aliases];
+        Object.keys(financialActors).forEach(actorKey => {{
+          const names = financialActors[actorKey];
           
           names.forEach(name => {{
-            const regex = new RegExp(`\\\\b${{name.replace(/[.*+?^${{}}()|[\\\\]\\\\\\\\]/g, '\\\\$&')}}\\\\b`, 'gi');
-            html = html.replace(regex, `<span class="actor-mention" onclick="openBlade('${{actorKey}}')">${{name}}</span>`);
+            const regex = new RegExp('\\\\b' + name.replace(/[.*+?^${{}}()|[\\\\]\\\\\\\\]/g, '\\\\$&') + '\\\\b', 'gi');
+            html = html.replace(regex, '<span class="financial-actor-mention" onclick="viewActorProfile(\\'' + actorKey + '\\', \\'' + name + '\\')" title="Click to view ' + name + ' profile in Actor Watch">' + name + '</span>');
           }});
         }});
         element.innerHTML = html;
       }});
-      
-      // Initialize actors grid
-      populateActorsGrid();
     }});
+    
+    function viewActorProfile(actorKey, actorName) {{
+      const confirmation = confirm('🎯 View ' + actorName + ' in Actor Watch?\\n\\nThis will open the dedicated Actor Watch page with detailed financial threat actor profiles.');
+      if (confirmation) {{
+        window.open('../actor_watch/index.html#' + actorKey, '_blank');
+      }}
+    }}
     
     // Keyboard shortcuts
     document.addEventListener('keydown', function(e) {{
@@ -3896,6 +3858,7 @@ def build_digest_html(
     
   }})();
   </script>
+
 </body>
 </html>
 """

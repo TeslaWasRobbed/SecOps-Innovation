@@ -116,39 +116,32 @@ DIGEST_PROMPT_JSON = (
 
 
 def _raw_digest_markdown(kevs_md: str, articles_md: str, profile_block: str) -> str:
-    """Stakeholder-style structure using only fetched data (no LLM API call).
-
-    Leading lines are a copy-paste prompt for Cursor Chat (or similar) to turn feeds into a webpage.
-    """
-    profile_section = ""
+    """Stakeholder-style structure using only fetched data (no LLM API call)."""
+    profile_note = ""
     if profile_block and "No organisation profile" not in profile_block:
-        profile_section = f"""
-## Organisation context (tailor the digest to this)
+        profile_note = (
+            "\nThis digest is generated from public feeds and framed against the configured "
+            "organisation profile. Items still require analyst validation before action.\n"
+        )
 
-{profile_block}
+    return f"""## Executive Summary
 
-"""
-    return f"""Please create a stakeholder digest webpage.
+Public threat intelligence was collected from CISA KEV and curated RSS feeds for analyst triage.{profile_note}
 
-Use the raw intelligence below. Write in clear, executive-friendly language; structure it like a simple single-page brief (headings, bullets, short paragraphs). Include: key vulnerabilities to prioritise, notable campaigns or headlines, and concrete recommended actions. Reflect the organisation context where it helps prioritisation.
-{profile_section}
----
-
-## Source data (automated feeds)
-
-### Key vulnerabilities (CISA KEV)
+## Key Vulnerabilities to Act On
 
 {kevs_md}
 
-### Recent threat headlines (RSS)
+## Notable Campaigns & Incidents
 
 {articles_md}
 
-### Suggested manual triage (optional)
+## Recommended Actions
 
-- Review KEV entries against your asset inventory and patch or mitigate per CISA due dates.
-- Triage RSS items relevant to your sector and share with incident-response and leadership.
-- For an API-generated summary instead of pasting this file into chat, run `python -m threat_digest` without `--no-llm` (requires LLM API access).
+- Review CISA KEV entries against the asset inventory and prioritise patching or mitigation by CISA due dates.
+- Triage RSS headlines for relevance to the organisation's sector, regions, public-facing services, and third-party dependencies.
+- Share high-relevance items with incident response, vulnerability management, and service owners for validation.
+- Use the AI-generated digest mode when available for richer grouping, relevance scoring, and executive wording.
 """
 
 
@@ -265,8 +258,8 @@ def build_digest(
         "articles_raw": articles_md,
         "kev_count": str(len(kevs)),
         "article_count": str(len(articles)),
-        "used_llm": str(used_llm_effective),
-        "profile_loaded": str(bool(profile)),
+        "used_llm": "true" if used_llm_effective else "false",
+        "profile_loaded": "true" if profile else "false",
     }
     
     logger.info(f"Digest generation complete: {result['kev_count']} KEVs, {result['article_count']} articles, LLM={result['used_llm']}")

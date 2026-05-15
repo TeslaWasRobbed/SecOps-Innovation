@@ -24,7 +24,7 @@ from rich.table import Table
 console = Console()
 
 
-# ── Rich terminal helpers ────────────────────────────────────────────────
+# Rich terminal helpers
 
 def print_panel(title: str, body: str, *, subtitle: str = "", style: str = "bold cyan") -> None:
     console.print(Panel(Markdown(body), title=title, subtitle=subtitle, border_style=style, padding=(1, 2)))
@@ -46,7 +46,7 @@ def print_kql(code: str, title: str = "KQL Rule") -> None:
     console.print(Panel(syntax, title=title, border_style="green", padding=(1, 2)))
 
 
-# ── Markdown file writer ────────────────────────────────────────────────
+# Markdown file writer
 
 def save_markdown(
     output_dir: str | Path,
@@ -68,7 +68,7 @@ def save_markdown(
     if paste_friendly:
         content = (
             f"{body.rstrip()}\n\n---\n\n"
-            f"_Threat digest feed export · {title} · {timestamp} · `{filename}`_\n"
+            f"_Threat digest feed export - {title} - {timestamp} - `{filename}`_\n"
         )
     else:
         content = f"# {title}\n\n*Generated: {timestamp}*\n\n{body}"
