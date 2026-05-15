@@ -50,8 +50,7 @@ def _strip_markdown(value: str) -> str:
 
 
 def _console_safe(value: str) -> str:
-    """Keep Rich output usable in legacy Windows consoles."""
-    return value.encode("cp1252", errors="replace").decode("cp1252")
+    return value
 
 
 def _slugify(value: str, max_len: int = 72) -> str:

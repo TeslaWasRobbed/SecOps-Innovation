@@ -208,7 +208,7 @@ def _open_file(path: Path) -> None:
 
 
 def _console_safe(value: str) -> str:
-    return value.encode("cp1252", errors="replace").decode("cp1252")
+    return value
 
 
 def _prompt_days(default: int = 7) -> int:

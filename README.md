@@ -26,15 +26,6 @@ chmod +x setup.sh generate_digest.sh start_workbench.sh cleanup_workspace.sh
 ./start_workbench.sh --host 0.0.0.0 --port 8765 --no-open
 ```
 
-For the easiest setup on Windows, use the self-service scripts:
-
-```powershell
-Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-.\setup.ps1
-.\generate_digest.ps1
-.\start_workbench.ps1
-```
-
 See [SELF_SERVICE_SETUP.md](SELF_SERVICE_SETUP.md) for the full step-by-step guide.
 
 ### 1. Install Dependencies
@@ -81,20 +72,11 @@ python -m secops actor "APT29" --recommendations
 
 Script equivalents:
 
-```powershell
-.\generate_digest.ps1          # Generate a 7-day digest
-.\generate_digest.ps1 -NoLlm   # Feed-only digest
-.\start_workbench.ps1          # Start browser workbench
-.\setup.ps1                    # Re-run setup/check dependencies
-.\cleanup_workspace.ps1        # Remove transient caches
-```
-
-Linux script equivalents:
-
 ```bash
 ./generate_digest.sh --days 7
 ./generate_digest.sh --days 7 --no-llm
 ./start_workbench.sh --host 0.0.0.0 --port 8765 --no-open
+./setup.sh
 ./cleanup_workspace.sh
 ```
 
@@ -127,7 +109,7 @@ python -m secops web
 
 The workbench runs locally at `http://127.0.0.1:8765/`. It lists the latest digest items, generates detection drafts through the Python backend, and shows generated YAML for review/copy.
 
-On an Azure VM, run `.\start_workbench.ps1 -HostName 0.0.0.0 -Port 8765` behind your chosen network/auth controls. See [AZURE_VM_WEBAPP.md](AZURE_VM_WEBAPP.md).
+On an Azure Linux VM, run `./start_workbench.sh --host 0.0.0.0 --port 8765 --no-open` behind your chosen network/auth controls. See [AZURE_VM_WEBAPP.md](AZURE_VM_WEBAPP.md).
 
 ### Actor Intelligence Options
 ```bash
