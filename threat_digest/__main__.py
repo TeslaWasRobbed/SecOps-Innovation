@@ -142,6 +142,7 @@ def main(argv: list[str] | None = None) -> int:
             article_count=int(result["article_count"]),
             used_llm=result.get("used_llm") == "true",
             digest_payload=result.get("digest_payload"),
+            watchlist=result.get("watchlist"),
         )
         html_path.write_text(html_doc, encoding="utf-8")
         console.print(f"[dim]Saved HTML -> {html_path}[/dim]")

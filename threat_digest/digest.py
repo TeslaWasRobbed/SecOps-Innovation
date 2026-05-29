@@ -170,6 +170,15 @@ def build_digest(
     
     logger.info("Fetching RSS feeds...")
     articles = fetch_rss(limit=rss_limit, days=days)
+    
+    # Update breached packages watchlist from the fetched articles
+    try:
+        from detection.package_watch import update_watchlist_from_articles, load_watchlist
+        update_watchlist_from_articles(articles)
+        watchlist = load_watchlist()
+    except Exception as exc:
+        logger.error(f"Failed to update package watchlist: {exc}")
+        watchlist = {"npm": [], "python": []}
 
     # Check if we have any data to work with
     if not kevs and not articles:
@@ -251,6 +260,30 @@ def build_digest(
     else:
         summary = _raw_digest_markdown(kevs_md, articles_md, profile_block)
 
+    # Append breached packages to summary
+    if watchlist and (watchlist.get("npm") or watchlist.get("python")):
+        packages_md = "\n\n## Breached Packages Watchlist\n\n"
+        
+        if watchlist.get("npm"):
+            packages_md += "### NPM Packages\n"
+            for pkg in watchlist["npm"]:
+                packages_md += f"- **{pkg['name']}** (Added {pkg.get('date_added', 'Unknown')})\n"
+                packages_md += f"  - Reason: {pkg.get('reason', 'Unknown')}\n"
+                if pkg.get('source_link'):
+                    packages_md += f"  - Source: [Link]({pkg['source_link']})\n"
+            packages_md += "\n"
+            
+        if watchlist.get("python"):
+            packages_md += "### Python Packages\n"
+            for pkg in watchlist["python"]:
+                packages_md += f"- **{pkg['name']}** (Added {pkg.get('date_added', 'Unknown')})\n"
+                packages_md += f"  - Reason: {pkg.get('reason', 'Unknown')}\n"
+                if pkg.get('source_link'):
+                    packages_md += f"  - Source: [Link]({pkg['source_link']})\n"
+            packages_md += "\n"
+            
+        summary += packages_md
+
     result = {
         "summary": summary,
         "digest_payload": digest_payload,
@@ -260,6 +293,7 @@ def build_digest(
         "article_count": str(len(articles)),
         "used_llm": "true" if used_llm_effective else "false",
         "profile_loaded": "true" if profile else "false",
+        "watchlist": watchlist,
     }
     
     logger.info(f"Digest generation complete: {result['kev_count']} KEVs, {result['article_count']} articles, LLM={result['used_llm']}")

@@ -23,6 +23,10 @@ DEFAULT_RSS_FEEDS: list[dict[str, str]] = [
     {"name": "The Hacker News", "url": "https://feeds.feedburner.com/TheHackersNews"},
     {"name": "Krebs on Security", "url": "https://krebsonsecurity.com/feed/"},
     {"name": "CISA Alerts", "url": "https://www.cisa.gov/cybersecurity-advisories/all.xml"},
+    {"name": "Dark Reading", "url": "https://www.darkreading.com/rss.xml"},
+    {"name": "Threatpost", "url": "https://threatpost.com/feed/"},
+    {"name": "CyberScoop", "url": "https://www.cyberscoop.com/feed/"},
+    {"name": "SecurityWeek", "url": "https://www.securityweek.com/feed/"},
 ]
 
 # Retry configuration
@@ -246,9 +250,12 @@ def fetch_rss(
         feed_articles = []
         
         try:
-            # Use feedparser with timeout and retry logic
-            logger.debug(f"Parsing RSS feed: {name}")
-            parsed = feedparser.parse(url)
+            # Use requests with timeout to fetch the feed content
+            logger.debug(f"Fetching RSS feed: {name}")
+            resp = _retry_request(url, timeout=15, max_retries=2)
+            
+            # Parse the content
+            parsed = feedparser.parse(resp.content)
             
             # Check if feedparser encountered errors
             if hasattr(parsed, 'bozo') and parsed.bozo:

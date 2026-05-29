@@ -17,6 +17,10 @@ console = Console()
 # Rich terminal helpers
 
 def print_panel(title: str, body: str, *, subtitle: str = "", style: str = "bold cyan") -> None:
+    # Fix windows console encoding issue
+    import sys
+    if sys.platform == "win32":
+        body = body.replace("\u2011", "-")
     console.print(Panel(Markdown(body), title=title, subtitle=subtitle, border_style=style, padding=(1, 2)))
 
 

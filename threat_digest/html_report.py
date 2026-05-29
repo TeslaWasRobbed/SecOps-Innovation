@@ -3185,6 +3185,7 @@ def build_digest_html(
     article_count: int,
     used_llm: bool,
     digest_payload: dict[str, Any] | None = None,
+    watchlist: dict[str, Any] | None = None,
 ) -> str:
     if digest_payload:
         body_html = _html_body_from_digest_payload(digest_payload)
@@ -3194,6 +3195,33 @@ def build_digest_html(
                 _sectionize_prose_html(_markdown_to_html(summary_markdown))
             )
         )
+        
+    # Append watchlist HTML if present
+    if watchlist and (watchlist.get("npm") or watchlist.get("python")):
+        watchlist_html = '<section class="digest-section"><h2>Breached Packages Watchlist</h2>'
+        
+        if watchlist.get("npm"):
+            watchlist_html += '<h3>NPM Packages</h3><ul>'
+            for pkg in watchlist["npm"]:
+                watchlist_html += f"<li><strong>{html.escape(pkg['name'])}</strong> (Added {html.escape(pkg.get('date_added', 'Unknown'))})<br>"
+                watchlist_html += f"Reason: {html.escape(pkg.get('reason', 'Unknown'))}"
+                if pkg.get('source_link'):
+                    watchlist_html += f"<br><a href='{html.escape(pkg['source_link'])}'>Source Link</a>"
+                watchlist_html += "</li>"
+            watchlist_html += '</ul>'
+            
+        if watchlist.get("python"):
+            watchlist_html += '<h3>Python Packages</h3><ul>'
+            for pkg in watchlist["python"]:
+                watchlist_html += f"<li><strong>{html.escape(pkg['name'])}</strong> (Added {html.escape(pkg.get('date_added', 'Unknown'))})<br>"
+                watchlist_html += f"Reason: {html.escape(pkg.get('reason', 'Unknown'))}"
+                if pkg.get('source_link'):
+                    watchlist_html += f"<br><a href='{html.escape(pkg['source_link'])}'>Source Link</a>"
+                watchlist_html += "</li>"
+            watchlist_html += '</ul>'
+            
+        watchlist_html += '</section>'
+        body_html += watchlist_html
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     company = html.escape(str(profile.get("company_name") or "Threat intelligence briefing"))
     mode = "AI synthesis" if used_llm else "Source intelligence"
