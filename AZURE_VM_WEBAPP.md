@@ -129,7 +129,7 @@ If using Git:
 
 ```bash
 cd /opt
-git clone <your-repo-url> secops-innovation
+git clone https://github.com/TeslaWasRobbed/SecOps-Innovation.git secops-innovation
 cd /opt/secops-innovation
 ```
 

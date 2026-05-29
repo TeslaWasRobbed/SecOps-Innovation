@@ -440,6 +440,7 @@ def generate_actor_dashboard(output_path: str | Path = "output/actor_watch/index
       <nav class="nav">
         <a href="../threat_digest/index.html">Latest Digest</a>
         <a href="../threat_digest/history.html">Digest History</a>
+        <a href="../detections/index.html">Detection Drafts</a>
       </nav>
     </header>
 

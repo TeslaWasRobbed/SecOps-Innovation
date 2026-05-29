@@ -296,11 +296,15 @@ def write_detection_index(index_path: Path = DEFAULT_INDEX) -> Path:
     header {{ display: flex; justify-content: space-between; gap: 16px; align-items: end; margin-bottom: 22px; }}
     h1 {{ margin: 0; font-size: clamp(28px, 4vw, 48px); }}
     p {{ color: var(--muted); }}
-    .rule-card {{ border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 18px; margin: 14px 0; }}
+    .nav {{ display: flex; flex-wrap: wrap; gap: 8px; }}
+    .nav a {{ border: 1px solid var(--line); background: #132844; color: var(--text); border-radius: 6px; padding: 8px 10px; text-decoration: none; }}
+    .nav a:hover {{ border-color: var(--accent); }}
+    .rule-card {{ min-width: 0; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 18px; margin: 14px 0; }}
     .rule-card h2 {{ margin: 0 0 6px; font-size: 20px; }}
     .rule-card a, button {{ border: 1px solid var(--line); background: #132844; color: var(--text); border-radius: 6px; padding: 8px 10px; margin-right: 8px; cursor: pointer; text-decoration: none; }}
     .rule-card a:hover, button:hover {{ border-color: var(--accent); }}
-    pre {{ overflow: auto; max-height: 520px; padding: 14px; background: #07111f; border: 1px solid var(--line); border-radius: 6px; white-space: pre; }}
+    pre {{ width: 100%; max-width: 100%; overflow: auto; max-height: min(520px, 62vh); padding: 14px; background: #07111f; border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }}
+    @media (max-width: 760px) {{ header {{ display: grid; }} }}
   </style>
 </head>
 <body>
@@ -310,6 +314,11 @@ def write_detection_index(index_path: Path = DEFAULT_INDEX) -> Path:
       <h1>Detection Drafts</h1>
       <p>Generated Sentinel analytic rule YAML for analyst review. Drafts are disabled by default.</p>
     </div>
+    <nav class="nav">
+      <a href="/">Workbench</a>
+      <a href="../threat_digest/index.html">Latest Digest</a>
+      <a href="../actor_watch/index.html">Actor Watch</a>
+    </nav>
   </header>
   {body}
 </main>

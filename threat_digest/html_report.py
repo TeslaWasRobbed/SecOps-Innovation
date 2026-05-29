@@ -3250,6 +3250,7 @@ def build_digest_html(
       </div>
       <div class="nav-links" style="display: flex; gap: 1rem; align-items: center;">
         <a href="../actor_watch/index.html" style="color: var(--text-soft); text-decoration: none; padding: 0.5rem 1rem; border-radius: var(--radius-sm); transition: all 0.3s ease; font-weight: 500;">🎯 Actor Watch</a>
+        <a href="../detections/index.html" style="color: var(--text-soft); text-decoration: none; padding: 0.5rem 1rem; border-radius: var(--radius-sm); transition: all 0.3s ease; font-weight: 500;">Detection Drafts</a>
         <a href="history.html" style="color: var(--text-soft); text-decoration: none; padding: 0.5rem 1rem; border-radius: var(--radius-sm); transition: all 0.3s ease; font-weight: 500;">📚 History</a>
       </div>
       <div class="top-controls">

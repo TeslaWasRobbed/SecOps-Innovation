@@ -65,8 +65,9 @@ def _workbench_html() -> str:
     select { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     .check-label { grid-template-columns: auto minmax(0, 1fr); align-items: center; padding-bottom: 9px; }
     .check-label input { width: auto; }
-    .layout { display: grid; grid-template-columns: minmax(320px, .95fr) minmax(0, 1.5fr); gap: 16px; align-items: start; }
+    .layout { display: grid; grid-template-columns: minmax(280px, .95fr) minmax(0, 1.5fr); gap: 16px; align-items: start; }
     .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 16px; }
+    .layout > *, .panel, .draft-card { min-width: 0; }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
     .items { display: grid; gap: 10px; max-height: 72vh; overflow: auto; padding-right: 4px; }
     .item { text-align: left; width: 100%; background: var(--panel2); }
@@ -78,7 +79,7 @@ def _workbench_html() -> str:
     .draft-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
     .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; color: var(--muted); font-size: 12px; }
-    pre { overflow: auto; max-height: 520px; margin: 12px 0 0; padding: 14px; background: #06101d; border: 1px solid var(--line); border-radius: 6px; white-space: pre; }
+    pre { width: 100%; max-width: 100%; overflow: auto; max-height: min(520px, 62vh); margin: 12px 0 0; padding: 14px; background: #06101d; border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
     .manual { display: grid; gap: 8px; margin-top: 12px; }
     input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     textarea { min-height: 110px; resize: vertical; }
@@ -93,8 +94,9 @@ def _workbench_html() -> str:
       <p>Generate the latest threat digest, select items, draft disabled Sentinel analytics, then review and copy YAML.</p>
     </div>
     <div class="toolbar">
-      <a class="button" href="/output/threat_digest/index.html" target="_blank">Digest</a>
-      <a class="button" href="/output/actor_watch/index.html" target="_blank">Actor Watch</a>
+      <a class="button" href="/output/threat_digest/index.html">Digest</a>
+      <a class="button" href="/output/actor_watch/index.html">Actor Watch</a>
+      <a class="button" href="/output/detections/index.html">Detection Drafts</a>
     </div>
   </header>
   <div id="status" class="status">Loading latest digest items...</div>
@@ -123,7 +125,7 @@ def _workbench_html() -> str:
     </div>
     <div class="toolbar">
       <button type="button" id="generate-digest" class="primary">Generate Digest</button>
-      <a class="button" href="/output/threat_digest/history.html" target="_blank">History</a>
+      <a class="button" href="/output/threat_digest/history.html">History</a>
     </div>
   </section>
   <section class="layout" aria-label="Detection drafting workspace">
