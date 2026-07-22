@@ -148,11 +148,10 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     <div class="toolbar">
       <button type="button" id="generate-digest" class="primary">Generate Digest</button>
       <a class="button" id="digest-open-new" href="/output/threat_digest/index.html" target="_blank" rel="noopener">Open In New Tab</a>
-      <a class="button" href="/output/threat_digest/history.html" target="_blank" rel="noopener">History</a>
     </div>
   </section>
   <section class="panel" aria-label="Threat digest report">
-    <p>The report below has its own Executive Briefing / SecOps Tactical toggle in the top-right corner.</p>
+    <p>The report below has its own Executive Briefing / SecOps Tactical toggle, and a History link, in the top-right corner.</p>
     <div id="digest-empty" class="digest-empty">No digest generated yet. Choose a look-back window above and press <strong>Generate Digest</strong>.</div>
     <iframe id="digest-frame" class="digest-frame" style="display:none" title="Threat digest report"></iframe>
   </section>
