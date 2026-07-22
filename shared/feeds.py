@@ -34,19 +34,37 @@ MAX_RETRIES = 3
 RETRY_DELAY = 1.0  # Base delay in seconds
 SIMILARITY_THRESHOLD = 0.8  # For duplicate detection
 
+# Several feed hosts (and their CDN/WAF, e.g. Cloudflare) return 403 Forbidden
+# for requests without a browser-like User-Agent. Mimic a real browser to
+# avoid being blocked as a bot.
+DEFAULT_REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/rss+xml, application/xml, text/xml, application/json, */*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
 # Cache configuration
 CACHE_DIR = Path(".cache/feeds")
 CACHE_DURATION_HOURS = 1  # Cache feeds for 1 hour in development
 
 
-def _retry_request(url: str, timeout: int = 30, max_retries: int = MAX_RETRIES) -> requests.Response:
+def _retry_request(
+    url: str,
+    timeout: int = 30,
+    max_retries: int = MAX_RETRIES,
+    headers: dict[str, str] | None = None,
+) -> requests.Response:
     """Make HTTP request with exponential backoff retry logic."""
     last_exception = None
-    
+    request_headers = {**DEFAULT_REQUEST_HEADERS, **(headers or {})}
+
     for attempt in range(max_retries):
         try:
             logger.debug(f"Fetching {url} (attempt {attempt + 1}/{max_retries})")
-            resp = requests.get(url, timeout=timeout)
+            resp = requests.get(url, timeout=timeout, headers=request_headers)
             resp.raise_for_status()
             return resp
         except requests.exceptions.Timeout as exc:
