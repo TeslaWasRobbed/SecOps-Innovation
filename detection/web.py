@@ -1,4 +1,4 @@
-"""Local browser workbench for detection draft generation."""
+"""Local browser workbench: daily threat digest, header analysis, OSINT, and package watchlist."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from analysis.email_header import analyze_message
 from analysis.osint import run_osint_lookup
@@ -20,19 +21,12 @@ from detection.package_watch import (
     remove_package,
     scan_for_new_packages,
 )
-from detection.generator import (
-    DEFAULT_GUIDE,
-    DEFAULT_MAX_TOKENS,
-    DEFAULT_OUTPUT_DIR,
-    DetectionItem,
-    extract_digest_items,
-    generate_rule_draft,
-    latest_digest_path,
-    list_detection_drafts,
-)
+from detection.generator import latest_digest_path
 
 
 _GENERATION_LOCK = threading.Lock()
+
+DIGEST_HTML_PATH = Path("output/threat_digest/index.html")
 
 
 def _load_known_domains() -> list[str]:
@@ -43,16 +37,6 @@ def _load_known_domains() -> list[str]:
         return load_known_domains()
     except Exception:
         return []
-
-
-def _item_to_dict(item: DetectionItem) -> dict[str, Any]:
-    return {
-        "index": item.index,
-        "section": item.section,
-        "title": item.title,
-        "context": item.context,
-        "source_path": str(item.source_path) if item.source_path else None,
-    }
 
 
 def _workbench_html(known_domains: list[str] | None = None) -> str:
@@ -83,21 +67,11 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     select { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     .check-label { grid-template-columns: auto minmax(0, 1fr); align-items: center; padding-bottom: 9px; }
     .check-label input { width: auto; }
-    .layout { display: grid; grid-template-columns: minmax(280px, .95fr) minmax(0, 1.5fr); gap: 16px; align-items: start; }
-    .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 16px; }
-    .layout > *, .panel, .draft-card { min-width: 0; }
+    .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 16px; min-width: 0; }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-    .items { display: grid; gap: 10px; max-height: 72vh; overflow: auto; padding-right: 4px; }
-    .item { text-align: left; width: 100%; background: var(--panel2); }
-    .item.is-active { border-color: var(--accent); box-shadow: 0 0 0 1px rgba(94,234,212,.25) inset; }
-    .item strong { display: block; margin-bottom: 6px; }
-    .item span, .meta { color: var(--muted); font-size: 13px; }
-    .drafts { display: grid; gap: 12px; }
-    .draft-card { border: 1px solid var(--line); background: var(--panel2); border-radius: 8px; padding: 14px; }
-    .draft-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: start; }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-    .chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 8px; color: var(--muted); font-size: 12px; }
-    pre { width: 100%; max-width: 100%; overflow: auto; max-height: min(520px, 62vh); margin: 12px 0 0; padding: 14px; background: #06101d; border: 1px solid var(--line); border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+    .digest-frame { width: 100%; height: 80vh; min-height: 480px; border: 1px solid var(--line); border-radius: 8px; background: #fff; display: block; }
+    .digest-empty { border: 1px dashed var(--line); border-radius: 8px; padding: 40px 16px; text-align: center; color: var(--muted); }
     .manual { display: grid; gap: 8px; margin-top: 12px; }
     input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     textarea { min-height: 110px; resize: vertical; }
@@ -129,7 +103,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     table.pkg-table td a { color: var(--accent); }
     button.pkg-remove { padding: 4px 8px; font-size: 12px; border-color: var(--bad); color: var(--bad); }
     button.pkg-remove:hover { background: rgba(251,113,133,.12); }
-    @media (max-width: 980px) { header, .layout, .draft-head, .digest-controls, .control-grid { grid-template-columns: 1fr; } }
+    @media (max-width: 980px) { header, .digest-controls, .control-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -137,25 +111,20 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
   <header>
     <div>
       <h1>SecOps Workbench</h1>
-      <p>Generate the latest threat digest, select items, draft disabled Sentinel analytics, then review and copy YAML.</p>
-    </div>
-    <div class="toolbar">
-      <a class="button" href="/output/threat_digest/index.html">Digest</a>
-      <a class="button" href="/output/actor_watch/index.html">Actor Watch</a>
-      <a class="button" href="/output/detections/index.html">Detection Drafts</a>
+      <p>Your daily security operations hub: threat briefings, message header triage, OSINT lookups, and the breached-package watchlist.</p>
     </div>
   </header>
   <nav class="tabs" role="tablist" aria-label="Workbench sections">
-    <button type="button" class="tab-btn is-active" data-tab="digest" role="tab" aria-selected="true">Digest &amp; Detections</button>
+    <button type="button" class="tab-btn is-active" data-tab="digest" role="tab" aria-selected="true">Threat Digest</button>
     <button type="button" class="tab-btn" data-tab="header" role="tab" aria-selected="false">Header Analysis</button>
     <button type="button" class="tab-btn" data-tab="osint" role="tab" aria-selected="false">OSINT Lookup</button>
     <button type="button" class="tab-btn" data-tab="packages" role="tab" aria-selected="false">Package Watchlist</button>
   </nav>
   <div id="tab-digest" class="tab-panel is-active">
-  <div id="status" class="status">Loading latest digest items...</div>
+  <div id="status" class="status">Loading latest digest...</div>
   <section class="panel digest-controls" aria-label="Digest generation">
     <div>
-      <h2>Threat Digest</h2>
+      <h2>Daily Threat Digest</h2>
       <div class="control-grid">
         <label>Look-back window
           <select id="digest-days">
@@ -178,31 +147,14 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     </div>
     <div class="toolbar">
       <button type="button" id="generate-digest" class="primary">Generate Digest</button>
-      <a class="button" href="/output/threat_digest/history.html">History</a>
+      <a class="button" id="digest-open-new" href="/output/threat_digest/index.html" target="_blank" rel="noopener">Open In New Tab</a>
+      <a class="button" href="/output/threat_digest/history.html" target="_blank" rel="noopener">History</a>
     </div>
   </section>
-  <section class="layout" aria-label="Detection drafting workspace">
-    <aside class="panel">
-      <div class="toolbar">
-        <button type="button" id="refresh">Refresh</button>
-        <button type="button" id="generate" class="primary" disabled>Generate Draft</button>
-      </div>
-      <h2>Digest Items</h2>
-      <div id="items" class="items"></div>
-      <div class="manual">
-        <h2>Manual Request</h2>
-        <input id="manual-title" placeholder="Threat title">
-        <textarea id="manual-context" placeholder="Context, indicators, behaviour, or source notes"></textarea>
-        <button type="button" id="manual-generate">Generate Manual Draft</button>
-      </div>
-    </aside>
-    <section class="panel">
-      <div class="toolbar">
-        <button type="button" id="reload-drafts">Reload Drafts</button>
-      </div>
-      <h2>Generated Drafts</h2>
-      <div id="drafts" class="drafts"></div>
-    </section>
+  <section class="panel" aria-label="Threat digest report">
+    <p>The report below has its own Executive Briefing / SecOps Tactical toggle in the top-right corner.</p>
+    <div id="digest-empty" class="digest-empty">No digest generated yet. Choose a look-back window above and press <strong>Generate Digest</strong>.</div>
+    <iframe id="digest-frame" class="digest-frame" style="display:none" title="Threat digest report"></iframe>
   </section>
   </div>
   <div id="tab-header" class="tab-panel">
@@ -270,12 +222,10 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
   </div>
 </main>
 <script>
-var state = { items: [], selected: null };
 var statusEl = document.getElementById("status");
-var itemsEl = document.getElementById("items");
-var draftsEl = document.getElementById("drafts");
-var generateBtn = document.getElementById("generate");
 var digestBtn = document.getElementById("generate-digest");
+var digestFrame = document.getElementById("digest-frame");
+var digestEmpty = document.getElementById("digest-empty");
 
 function setStatus(text) { statusEl.textContent = text; }
 function escapeHtml(s) {
@@ -289,80 +239,23 @@ async function api(path, options) {
   if (!res.ok || data.error) throw new Error(data.error || res.statusText);
   return data;
 }
-function renderItems() {
-  itemsEl.innerHTML = "";
-  if (!state.items.length) {
-    itemsEl.innerHTML = "<p>No detection-ready digest items found. Generate a digest first.</p>";
-    return;
-  }
-  state.items.forEach(function(item) {
-    var btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "item" + (state.selected === item.index ? " is-active" : "");
-    btn.innerHTML = "<strong>" + escapeHtml(item.title) + "</strong><span>" + escapeHtml(item.section) + "</span>";
-    btn.addEventListener("click", function() {
-      state.selected = item.index;
-      generateBtn.disabled = false;
-      renderItems();
-    });
-    itemsEl.appendChild(btn);
-  });
+function showDigestFrame() {
+  digestEmpty.style.display = "none";
+  digestFrame.style.display = "block";
+  digestFrame.src = "/output/threat_digest/index.html?t=" + Date.now();
 }
-function renderDrafts(drafts) {
-  draftsEl.innerHTML = "";
-  if (!drafts.length) {
-    draftsEl.innerHTML = "<p>No drafts generated yet.</p>";
-    return;
-  }
-  drafts.forEach(function(draft) {
-    var card = document.createElement("article");
-    card.className = "draft-card";
-    card.innerHTML =
-      "<div class='draft-head'><div><h2>" + escapeHtml(draft.name) + "</h2>" +
-      "<div class='chips'><span class='chip'>" + escapeHtml(draft.status) + "</span>" +
-      "<span class='chip'>" + escapeHtml(draft.severity) + "</span>" +
-      "<span class='chip'>enabled: " + escapeHtml(String(draft.enabled)) + "</span>" +
-      "<span class='chip'>" + escapeHtml(draft.date) + "</span></div>" +
-      "<p class='meta'>" + escapeHtml(draft.path) + "</p></div>" +
-      "<div><button type='button' class='copy'>Copy YAML</button></div></div>" +
-      "<pre>" + escapeHtml(draft.yaml) + "</pre>";
-    card.querySelector(".copy").addEventListener("click", function() {
-      navigator.clipboard.writeText(draft.yaml || "");
-      this.textContent = "Copied";
-      var btn = this;
-      setTimeout(function() { btn.textContent = "Copy YAML"; }, 1200);
-    });
-    draftsEl.appendChild(card);
-  });
-}
-async function loadItems() {
-  setStatus("Loading latest digest items...");
-  var data = await api("/api/digest-items");
-  state.items = data.items || [];
-  state.selected = null;
-  generateBtn.disabled = true;
-  renderItems();
-  setStatus(data.digest_path ? "Loaded " + state.items.length + " items from " + data.digest_path : "No digest found.");
-}
-async function loadDrafts() {
-  var data = await api("/api/drafts");
-  renderDrafts(data.drafts || []);
-}
-async function generate(payload) {
-  setStatus("Generating detection draft. This can take a minute or two...");
-  generateBtn.disabled = true;
-  document.getElementById("manual-generate").disabled = true;
+async function loadDigestStatus() {
+  setStatus("Loading latest digest...");
   try {
-    var data = await api("/api/generate", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload)
-    });
-    setStatus("Saved " + data.path + " - " + data.validation_message);
-    await loadDrafts();
-  } finally {
-    generateBtn.disabled = !state.selected;
-    document.getElementById("manual-generate").disabled = false;
+    var data = await api("/api/digest-status");
+    if (data.html_available) {
+      showDigestFrame();
+      setStatus("Loaded existing digest" + (data.digest_path ? " (" + data.digest_path + ")" : "") + ".");
+    } else {
+      setStatus("No digest generated yet.");
+    }
+  } catch (e) {
+    setStatus(e.message);
   }
 }
 async function generateDigest() {
@@ -377,24 +270,14 @@ async function generateDigest() {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({days: days, no_llm: noLlm, pdf: pdf})
     });
+    showDigestFrame();
     setStatus("Digest generated. Latest report: " + data.latest_html);
-    await loadItems();
   } finally {
     digestBtn.disabled = false;
   }
 }
-document.getElementById("refresh").addEventListener("click", function() { loadItems().catch(function(e) { setStatus(e.message); }); });
-document.getElementById("reload-drafts").addEventListener("click", function() { loadDrafts().catch(function(e) { setStatus(e.message); }); });
 digestBtn.addEventListener("click", function() { generateDigest().catch(function(e) { setStatus(e.message); digestBtn.disabled = false; }); });
-generateBtn.addEventListener("click", function() { if (state.selected) generate({item_index: state.selected}).catch(function(e) { setStatus(e.message); }); });
-document.getElementById("manual-generate").addEventListener("click", function() {
-  var title = document.getElementById("manual-title").value.trim();
-  var context = document.getElementById("manual-context").value.trim();
-  if (!title && !context) { setStatus("Add a title or context for the manual draft."); return; }
-  generate({title: title || "Manual detection request", context: context || title}).catch(function(e) { setStatus(e.message); });
-});
-loadItems().catch(function(e) { setStatus(e.message); });
-loadDrafts().catch(function(e) { setStatus(e.message); });
+loadDigestStatus();
 
 // --- Tabs -------------------------------------------------------------
 document.querySelectorAll(".tab-btn").forEach(function(btn) {
@@ -700,25 +583,25 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         try:
-            if self.path in ("/", "/detections", "/detections/"):
+            path = urlsplit(self.path).path
+            if path in ("/", "/detections", "/detections/"):
                 self._send(HTTPStatus.OK, _workbench_html(_load_known_domains()).encode("utf-8"), "text/html; charset=utf-8")
                 return
-            if self.path == "/api/health":
+            if path == "/api/health":
                 self._json({"status": "ok", "service": "secops-workbench"})
                 return
-            if self.path == "/api/digest-items":
+            if path == "/api/digest-status":
                 digest = latest_digest_path()
-                items = extract_digest_items(digest) if digest else []
-                self._json({"digest_path": str(digest) if digest else None, "items": [_item_to_dict(i) for i in items]})
+                self._json({
+                    "digest_path": str(digest) if digest else None,
+                    "html_available": DIGEST_HTML_PATH.is_file(),
+                })
                 return
-            if self.path == "/api/drafts":
-                self._json({"drafts": list_detection_drafts()})
-                return
-            if self.path == "/api/package-watchlist":
+            if path == "/api/package-watchlist":
                 self._json({"watchlist": load_watchlist()})
                 return
-            if self.path.startswith("/output/"):
-                self._serve_output_file(self.path.lstrip("/"))
+            if path.startswith("/output/"):
+                self._serve_output_file(path.lstrip("/"))
                 return
             self._error("Not found", HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -726,44 +609,26 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
-            if self.path == "/api/generate-digest":
+            path = urlsplit(self.path).path
+            if path == "/api/generate-digest":
                 self._handle_generate_digest()
                 return
-            if self.path == "/api/header-analyze":
+            if path == "/api/header-analyze":
                 self._handle_header_analyze()
                 return
-            if self.path == "/api/osint-lookup":
+            if path == "/api/osint-lookup":
                 self._handle_osint_lookup()
                 return
-            if self.path == "/api/package-watchlist/scan":
+            if path == "/api/package-watchlist/scan":
                 self._handle_package_scan()
                 return
-            if self.path == "/api/package-watchlist/add":
+            if path == "/api/package-watchlist/add":
                 self._handle_package_add()
                 return
-            if self.path == "/api/package-watchlist/remove":
+            if path == "/api/package-watchlist/remove":
                 self._handle_package_remove()
                 return
-            if self.path != "/api/generate":
-                self._error("Not found", HTTPStatus.NOT_FOUND)
-                return
-            length = int(self.headers.get("Content-Length") or "0")
-            payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
-            item = self._resolve_generation_item(payload)
-            path, validation_message, yaml_text = generate_rule_draft(
-                item,
-                guide_path=DEFAULT_GUIDE,
-                output_dir=DEFAULT_OUTPUT_DIR,
-                max_tokens=DEFAULT_MAX_TOKENS,
-            )
-            self._json(
-                {
-                    "path": str(path),
-                    "validation_message": validation_message,
-                    "yaml": yaml_text,
-                    "drafts": list_detection_drafts(),
-                }
-            )
+            self._error("Not found", HTTPStatus.NOT_FOUND)
         except Exception as exc:
             self._error(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
 
@@ -850,32 +715,15 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             if exit_code != 0:
                 raise RuntimeError(f"Digest generation failed with exit code {exit_code}.")
             digest = latest_digest_path()
-            items = extract_digest_items(digest) if digest else []
             self._json(
                 {
                     "days": days,
                     "latest_digest": str(digest) if digest else None,
                     "latest_html": "output/threat_digest/index.html",
-                    "items": [_item_to_dict(i) for i in items],
                 }
             )
         finally:
             _GENERATION_LOCK.release()
-
-    def _resolve_generation_item(self, payload: dict[str, Any]) -> DetectionItem:
-        if payload.get("title") or payload.get("context"):
-            title = str(payload.get("title") or "Manual detection request").strip()
-            context = str(payload.get("context") or title).strip()
-            return DetectionItem(index=1, section="Manual request", title=title, context=context)
-        digest = latest_digest_path()
-        if not digest:
-            raise ValueError("No digest Markdown found. Generate a digest first.")
-        items = extract_digest_items(digest)
-        requested = int(payload.get("item_index") or 0)
-        for item in items:
-            if item.index == requested:
-                return item
-        raise ValueError(f"No digest item #{requested}")
 
     def _serve_output_file(self, requested: str) -> None:
         path = Path(requested).resolve()
