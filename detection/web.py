@@ -14,6 +14,12 @@ from typing import Any
 
 from analysis.email_header import analyze_message
 from analysis.osint import run_osint_lookup
+from detection.package_watch import (
+    add_manual_package,
+    load_watchlist,
+    remove_package,
+    scan_for_new_packages,
+)
 from detection.generator import (
     DEFAULT_GUIDE,
     DEFAULT_MAX_TOKENS,
@@ -117,6 +123,12 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     .ioc-chip:hover { border-color: var(--accent); }
     .result-block { margin-top: 10px; }
     .result-block h3 { font-size: 14px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    table.pkg-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.pkg-table th, table.pkg-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    table.pkg-table th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .03em; }
+    table.pkg-table td a { color: var(--accent); }
+    button.pkg-remove { padding: 4px 8px; font-size: 12px; border-color: var(--bad); color: var(--bad); }
+    button.pkg-remove:hover { background: rgba(251,113,133,.12); }
     @media (max-width: 980px) { header, .layout, .draft-head, .digest-controls, .control-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -137,6 +149,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     <button type="button" class="tab-btn is-active" data-tab="digest" role="tab" aria-selected="true">Digest &amp; Detections</button>
     <button type="button" class="tab-btn" data-tab="header" role="tab" aria-selected="false">Header Analysis</button>
     <button type="button" class="tab-btn" data-tab="osint" role="tab" aria-selected="false">OSINT Lookup</button>
+    <button type="button" class="tab-btn" data-tab="packages" role="tab" aria-selected="false">Package Watchlist</button>
   </nav>
   <div id="tab-digest" class="tab-panel is-active">
   <div id="status" class="status">Loading latest digest items...</div>
@@ -215,6 +228,44 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
         <button type="button" id="osint-lookup" class="primary">Lookup</button>
       </div>
       <div id="osint-results"></div>
+    </section>
+  </div>
+  <div id="tab-packages" class="tab-panel">
+    <section class="panel" aria-label="Breached NPM and PyPI package watchlist">
+      <h2>Breached Package Watchlist</h2>
+      <p>Tracks NPM and Python (PyPI) packages flagged in threat-intel feeds as compromised, malicious, or typosquatted. Updated automatically whenever a digest runs, or on demand below.</p>
+      <div class="toolbar">
+        <button type="button" id="packages-scan" class="primary">Scan Recent Feeds Now</button>
+        <button type="button" id="packages-refresh">Refresh List</button>
+      </div>
+      <div id="packages-status" class="status">Loading watchlist...</div>
+      <div class="manual">
+        <h2>Add Manually</h2>
+        <div class="control-grid">
+          <label>Ecosystem
+            <select id="pkg-ecosystem">
+              <option value="npm">npm</option>
+              <option value="python">Python (PyPI)</option>
+            </select>
+          </label>
+          <label>Package name
+            <input id="pkg-name" placeholder="e.g. left-pad">
+          </label>
+          <label>Reason
+            <input id="pkg-reason" placeholder="e.g. malicious postinstall script">
+          </label>
+        </div>
+        <input id="pkg-source" placeholder="Source link (optional)">
+        <button type="button" id="pkg-add">Add To Watchlist</button>
+      </div>
+      <div class="result-block">
+        <h3>npm</h3>
+        <div id="packages-npm"></div>
+      </div>
+      <div class="result-block">
+        <h3>Python (PyPI)</h3>
+        <div id="packages-python"></div>
+      </div>
     </section>
   </div>
 </main>
@@ -534,6 +585,95 @@ document.getElementById("osint-lookup").addEventListener("click", function() {
   var q = document.getElementById("osint-query").value.trim();
   if (q) runOsintLookup(q);
 });
+
+// --- Package Watchlist --------------------------------------------------
+function renderPackageTable(ecosystem, packages) {
+  var el = document.getElementById("packages-" + ecosystem);
+  if (!packages || !packages.length) {
+    el.innerHTML = "<p>No " + ecosystem + " packages on the watchlist yet.</p>";
+    return;
+  }
+  var rows = packages.map(function(p) {
+    var link = p.source_link ? "<a href='" + escapeHtml(p.source_link) + "' target='_blank' rel='noopener'>source</a>" : "-";
+    return "<tr><td><strong>" + escapeHtml(p.name) + "</strong></td>" +
+      "<td>" + escapeHtml(p.reason || "-") + "</td>" +
+      "<td>" + escapeHtml(p.date_added || "-") + "</td>" +
+      "<td>" + link + "</td>" +
+      "<td><button type='button' class='pkg-remove' data-ecosystem='" + ecosystem + "' data-name='" + escapeHtml(p.name) + "'>Remove</button></td></tr>";
+  }).join("");
+  el.innerHTML = "<table class='pkg-table'><thead><tr><th>Name</th><th>Reason</th><th>Date added</th><th>Source</th><th></th></tr></thead><tbody>" + rows + "</tbody></table>";
+  el.querySelectorAll(".pkg-remove").forEach(function(btn) {
+    btn.addEventListener("click", function() {
+      removePackage(btn.getAttribute("data-ecosystem"), btn.getAttribute("data-name"));
+    });
+  });
+}
+function renderWatchlist(watchlist) {
+  renderPackageTable("npm", watchlist.npm || []);
+  renderPackageTable("python", watchlist.python || []);
+}
+function setPackagesStatus(text) { document.getElementById("packages-status").textContent = text; }
+async function loadWatchlist() {
+  setPackagesStatus("Loading watchlist...");
+  var data = await api("/api/package-watchlist");
+  renderWatchlist(data.watchlist || {npm: [], python: []});
+  var total = (data.watchlist.npm || []).length + (data.watchlist.python || []).length;
+  setPackagesStatus(total + " package(s) on the watchlist.");
+}
+async function scanForPackages() {
+  var btn = document.getElementById("packages-scan");
+  btn.disabled = true;
+  setPackagesStatus("Scanning recent feeds for newly breached packages. This can take a minute...");
+  try {
+    var data = await api("/api/package-watchlist/scan", {method: "POST"});
+    renderWatchlist(data.watchlist || {npm: [], python: []});
+    var added = data.newly_added || [];
+    setPackagesStatus("Scanned " + data.articles_scanned + " article(s). " +
+      (added.length ? "Added " + added.length + " new package(s): " + added.map(function(p) { return p.name; }).join(", ") + "." : "No new packages found."));
+  } catch (e) {
+    setPackagesStatus(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+async function addPackageManually() {
+  var ecosystem = document.getElementById("pkg-ecosystem").value;
+  var name = document.getElementById("pkg-name").value.trim();
+  var reason = document.getElementById("pkg-reason").value.trim();
+  var source = document.getElementById("pkg-source").value.trim();
+  if (!name) { setPackagesStatus("Enter a package name first."); return; }
+  try {
+    var data = await api("/api/package-watchlist/add", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ecosystem: ecosystem, name: name, reason: reason, source_link: source})
+    });
+    renderWatchlist(data.watchlist || {npm: [], python: []});
+    document.getElementById("pkg-name").value = "";
+    document.getElementById("pkg-reason").value = "";
+    document.getElementById("pkg-source").value = "";
+    setPackagesStatus("Added " + name + " to the " + ecosystem + " watchlist.");
+  } catch (e) {
+    setPackagesStatus(e.message);
+  }
+}
+async function removePackage(ecosystem, name) {
+  try {
+    var data = await api("/api/package-watchlist/remove", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ecosystem: ecosystem, name: name})
+    });
+    renderWatchlist(data.watchlist || {npm: [], python: []});
+    setPackagesStatus("Removed " + name + " from the " + ecosystem + " watchlist.");
+  } catch (e) {
+    setPackagesStatus(e.message);
+  }
+}
+document.getElementById("packages-scan").addEventListener("click", function() { scanForPackages(); });
+document.getElementById("packages-refresh").addEventListener("click", function() { loadWatchlist().catch(function(e) { setPackagesStatus(e.message); }); });
+document.getElementById("pkg-add").addEventListener("click", function() { addPackageManually(); });
+loadWatchlist().catch(function(e) { setPackagesStatus(e.message); });
 </script>
 </body>
 </html>
@@ -574,6 +714,9 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             if self.path == "/api/drafts":
                 self._json({"drafts": list_detection_drafts()})
                 return
+            if self.path == "/api/package-watchlist":
+                self._json({"watchlist": load_watchlist()})
+                return
             if self.path.startswith("/output/"):
                 self._serve_output_file(self.path.lstrip("/"))
                 return
@@ -591,6 +734,15 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if self.path == "/api/osint-lookup":
                 self._handle_osint_lookup()
+                return
+            if self.path == "/api/package-watchlist/scan":
+                self._handle_package_scan()
+                return
+            if self.path == "/api/package-watchlist/add":
+                self._handle_package_add()
+                return
+            if self.path == "/api/package-watchlist/remove":
+                self._handle_package_remove()
                 return
             if self.path != "/api/generate":
                 self._error("Not found", HTTPStatus.NOT_FOUND)
@@ -636,6 +788,44 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             self._error("No query provided.")
             return
         self._json(run_osint_lookup(query))
+
+    def _handle_package_scan(self) -> None:
+        if not _GENERATION_LOCK.acquire(blocking=False):
+            self._error("A generation job is already running. Wait for it to finish.", HTTPStatus.CONFLICT)
+            return
+        try:
+            result = scan_for_new_packages()
+            self._json(result)
+        finally:
+            _GENERATION_LOCK.release()
+
+    def _handle_package_add(self) -> None:
+        length = int(self.headers.get("Content-Length") or "0")
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        try:
+            watchlist = add_manual_package(
+                ecosystem=str(payload.get("ecosystem") or ""),
+                name=str(payload.get("name") or ""),
+                reason=str(payload.get("reason") or ""),
+                source_link=str(payload.get("source_link") or ""),
+            )
+        except ValueError as exc:
+            self._error(str(exc))
+            return
+        self._json({"watchlist": watchlist})
+
+    def _handle_package_remove(self) -> None:
+        length = int(self.headers.get("Content-Length") or "0")
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        try:
+            watchlist = remove_package(
+                ecosystem=str(payload.get("ecosystem") or ""),
+                name=str(payload.get("name") or ""),
+            )
+        except ValueError as exc:
+            self._error(str(exc))
+            return
+        self._json({"watchlist": watchlist})
 
     def _handle_generate_digest(self) -> None:
         if not _GENERATION_LOCK.acquire(blocking=False):

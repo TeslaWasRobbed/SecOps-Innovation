@@ -27,6 +27,16 @@ DEFAULT_RSS_FEEDS: list[dict[str, str]] = [
     {"name": "Threatpost", "url": "https://threatpost.com/feed/"},
     {"name": "CyberScoop", "url": "https://www.cyberscoop.com/feed/"},
     {"name": "SecurityWeek", "url": "https://www.securityweek.com/feed/"},
+    {"name": "The Record", "url": "https://therecord.media/feed/"},
+    {"name": "Infosecurity Magazine", "url": "https://www.infosecurity-magazine.com/rss/news/"},
+    {"name": "We Live Security (ESET)", "url": "https://www.welivesecurity.com/en/rss/feed/"},
+    {"name": "Unit 42 (Palo Alto Networks)", "url": "https://unit42.paloaltonetworks.com/feed/"},
+    {"name": "Microsoft Security Blog", "url": "https://www.microsoft.com/en-us/security/blog/feed/"},
+    {"name": "Talos Intelligence", "url": "https://feeds.feedburner.com/feedburner/Talos"},
+    {"name": "Security Affairs", "url": "https://securityaffairs.com/feed"},
+    {"name": "CSO Online", "url": "https://www.csoonline.com/feed/"},
+    {"name": "Help Net Security", "url": "https://www.helpnetsecurity.com/feed/"},
+    {"name": "The Register Security", "url": "https://www.theregister.com/security/headlines.atom"},
 ]
 
 # Retry configuration

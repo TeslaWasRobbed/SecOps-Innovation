@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,7 @@ from shared.llm import complete
 logger = logging.getLogger(__name__)
 
 WATCHLIST_PATH = Path("output/breached_packages.json")
+ECOSYSTEMS = ("npm", "python")
 
 def load_watchlist() -> dict[str, list[dict[str, str]]]:
     """Load the current watchlist of breached packages."""
@@ -114,4 +116,75 @@ def update_watchlist_from_articles(articles: list[dict[str, str]]) -> dict[str, 
         save_watchlist(watchlist)
         logger.info(f"Watchlist updated with {added_count} new packages.")
         
+    return watchlist
+
+def scan_for_new_packages(*, days: int = 3, limit: int = 40) -> dict[str, Any]:
+    """Fetch recent RSS articles and check them for newly breached packages.
+
+    Lighter-weight than a full digest run: no LLM digest/report generation,
+    just the feed fetch + package extraction step. Intended for on-demand use
+    from the workbench UI.
+    """
+    from shared.feeds import fetch_rss
+
+    articles = fetch_rss(limit=limit, days=days)
+    before = load_watchlist()
+    before_names = {
+        (eco, p["name"].lower()) for eco in ECOSYSTEMS for p in before.get(eco, [])
+    }
+
+    watchlist = update_watchlist_from_articles(articles)
+
+    added = [
+        {**p, "ecosystem": eco}
+        for eco in ECOSYSTEMS
+        for p in watchlist.get(eco, [])
+        if (eco, p["name"].lower()) not in before_names
+    ]
+
+    return {
+        "watchlist": watchlist,
+        "articles_scanned": len(articles),
+        "newly_added": added,
+    }
+
+def add_manual_package(
+    ecosystem: str,
+    name: str,
+    reason: str = "",
+    source_link: str = "",
+) -> dict[str, list[dict[str, str]]]:
+    """Manually add a package to the watchlist (e.g. from analyst knowledge)."""
+    ecosystem = ecosystem.strip().lower()
+    if ecosystem not in ECOSYSTEMS:
+        raise ValueError(f"ecosystem must be one of {ECOSYSTEMS}")
+    name = name.strip()
+    if not name:
+        raise ValueError("name is required")
+
+    watchlist = load_watchlist()
+    existing_names = {p["name"].lower() for p in watchlist[ecosystem]}
+    if name.lower() not in existing_names:
+        watchlist[ecosystem].append({
+            "name": name,
+            "reason": reason.strip() or "Manually added",
+            "date_added": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "source_link": source_link.strip(),
+        })
+        save_watchlist(watchlist)
+        logger.info(f"Manually added {ecosystem} package to watchlist: {name}")
+    return watchlist
+
+def remove_package(ecosystem: str, name: str) -> dict[str, list[dict[str, str]]]:
+    """Remove a package from the watchlist (e.g. a false positive)."""
+    ecosystem = ecosystem.strip().lower()
+    if ecosystem not in ECOSYSTEMS:
+        raise ValueError(f"ecosystem must be one of {ECOSYSTEMS}")
+
+    watchlist = load_watchlist()
+    remaining = [p for p in watchlist[ecosystem] if p["name"].lower() != name.strip().lower()]
+    if len(remaining) != len(watchlist[ecosystem]):
+        watchlist[ecosystem] = remaining
+        save_watchlist(watchlist)
+        logger.info(f"Removed {ecosystem} package from watchlist: {name}")
     return watchlist
