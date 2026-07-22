@@ -29,3 +29,9 @@ audience: "CISO and executive committee — minimal jargon; clear actions"
 additional_context: |
   We operate consumer-facing web properties; call out payment skimmers, e-commerce CMS issues,
   and OAuth / SaaS account takeover when relevant.
+
+# Your organisation's real sending domains. Used by the Header Analysis tool (web workbench /
+# `secops header`) to flag lookalike/typosquat domains in From, Reply-To, and Return-Path.
+known_domains:
+  - "example.com"
+  - "example.co.uk"

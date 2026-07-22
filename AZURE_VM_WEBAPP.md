@@ -2,10 +2,12 @@
 
 This guide runs the SecOps Innovation workbench as a self-contained internal web app on an Azure Linux VM. After setup, day-to-day use is browser-only:
 
-- Generate threat digests.
-- Review generated reports.
+- Generate threat digests, either on-demand or automatically every day via a systemd timer.
+- Review reports with an Executive Briefing / SecOps Tactical toggle, and threat-actor chips on correlated headlines.
 - Generate disabled Sentinel analytic rule YAML drafts.
 - Copy/paste YAML for manual review.
+- Analyze suspicious email/message headers (SPF/DKIM/DMARC, hop timeline, spoofing heuristics, IOC extraction).
+- Run OSINT lookups (RDAP + VirusTotal) on domains, IPs, and file hashes.
 
 The current app is an internal workbench. Do not expose it anonymously to the public internet.
 
@@ -18,8 +20,13 @@ User browser
   -> SecOps Workbench on TCP 8765
   -> Python app
       -> public RSS / CISA feeds
+      -> MITRE ATT&CK + Microsoft threat intel (actor correlation)
       -> Azure OpenAI or Anthropic
+      -> RDAP + VirusTotal (OSINT lookups, optional key)
       -> local output/ reports and detection drafts
+
+systemd timer (secops-digest.timer)
+  -> daily_digest.sh -> generates the day's briefing unattended
 ```
 
 Recommended first deployment:
@@ -171,6 +178,19 @@ DIGEST_MAX_COMPLETION_TOKENS=16384
 COMPANY_PROFILE=company_profile.yaml
 ```
 
+Optional — OSINT Lookup tool (domain/IP/hash reputation via VirusTotal; RDAP lookups work without a key):
+
+```text
+VIRUSTOTAL_API_KEY=your-virustotal-key
+```
+
+Optional — overrides for the automated daily briefing (see step 13, "Automate Daily Briefings"):
+
+```text
+DIGEST_SCHEDULE_DAYS=1
+DIGEST_SCHEDULE_PDF=0
+```
+
 Corporate TLS inspection:
 
 ```text
@@ -208,6 +228,7 @@ Make sure it reflects:
 - Cloud estate.
 - Priority threats.
 - Intended audience.
+- `known_domains` — your real sending domains, used by the Header Analysis tool to flag lookalike/typosquat domains.
 
 ## 8. Run Initial Setup
 
@@ -341,14 +362,60 @@ sudo journalctl -u secops-workbench -f
 
 After reboot, the workbench should start automatically.
 
-## 13. Browser-Only Operating Workflow
+## 13. Automate Daily Briefings (systemd timer)
+
+The workbench's "Generate Digest" button is still there for ad-hoc runs, but for a true daily briefing, install the timer so a fresh digest is generated unattended every morning.
+
+Install the service and timer:
+
+```bash
+sudo cp /opt/secops-innovation/secops-digest.service.example /etc/systemd/system/secops-digest.service
+sudo cp /opt/secops-innovation/secops-digest.timer.example /etc/systemd/system/secops-digest.timer
+```
+
+Review/adjust the schedule (default 06:00 local server time):
+
+```bash
+sudo nano /etc/systemd/system/secops-digest.timer
+```
+
+Enable and start the timer:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now secops-digest.timer
+```
+
+Check it's scheduled:
+
+```bash
+systemctl list-timers secops-digest.timer --no-pager
+```
+
+Run it once immediately to confirm it works end-to-end:
+
+```bash
+sudo systemctl start secops-digest.service
+sudo journalctl -u secops-digest.service -n 100 --no-pager
+```
+
+By default this generates a 1-day look-back digest (`--days 1`, matching a true "daily" briefing). Override the look-back window or enable PDF export via `.env` (see step 6):
+
+```text
+DIGEST_SCHEDULE_DAYS=1
+DIGEST_SCHEDULE_PDF=0
+```
+
+Note: the very first run also downloads the MITRE ATT&CK STIX bundle (~25 MB, one-time, cached under `.cache/`) for threat-actor correlation — it may take noticeably longer than subsequent runs.
+
+## 14. Browser-Only Operating Workflow
 
 Once systemd is running, users should not need shell access.
 
-In the browser:
+In the browser, on the "Digest & Detections" tab:
 
 1. Open `http://<vm-private-ip-or-dns>:8765/`.
-2. Choose the digest look-back window.
+2. Choose the digest look-back window (or rely on the daily systemd timer from step 13).
 3. Press `Generate Digest`.
 4. Wait for completion.
 5. Review loaded digest items.
@@ -356,6 +423,11 @@ In the browser:
 7. Press `Generate Draft`.
 8. Review generated YAML.
 9. Copy YAML for manual Sentinel/detection-as-code review.
+
+Two more tabs are available for ad-hoc analyst work:
+
+- **Header Analysis** — paste raw email headers or a full `.eml`; get SPF/DKIM/DMARC verdicts, a hop timeline, spoofing/lookalike-domain signals, and extracted IOCs (click an IOC to send it straight to the OSINT tab).
+- **OSINT Lookup** — enter a domain, IP, or file hash for a combined RDAP + VirusTotal lookup.
 
 Generated outputs stay on the VM:
 
@@ -365,7 +437,7 @@ output/actor_watch/
 output/detections/drafts/
 ```
 
-## 14. Updating The App
+## 15. Updating The App
 
 Stop service:
 
@@ -390,7 +462,7 @@ sudo systemctl start secops-workbench
 curl http://127.0.0.1:8765/api/health
 ```
 
-## 15. Backup And Retention
+## 16. Backup And Retention
 
 Back up:
 
@@ -417,7 +489,7 @@ sudo tar -czf /opt/secops-backup-$(date +%F).tgz \
   /opt/secops-innovation/output
 ```
 
-## 16. Troubleshooting
+## 17. Troubleshooting
 
 ### App does not load remotely
 
@@ -490,7 +562,20 @@ sudo systemctl stop secops-workbench
 ./start_workbench.sh --host 0.0.0.0 --port 8788 --no-open
 ```
 
-## 17. Security Hardening Checklist
+### Daily briefing timer did not run
+
+```bash
+systemctl list-timers secops-digest.timer --no-pager
+sudo journalctl -u secops-digest.service -n 100 --no-pager
+```
+
+Common causes: timer not enabled (`sudo systemctl enable --now secops-digest.timer`), or the VM was off at the scheduled time — `Persistent=true` in the timer unit re-runs it at next boot, but only once.
+
+### OSINT Lookup tool shows "VIRUSTOTAL_API_KEY is not set"
+
+RDAP (domain/IP) lookups still work without a key. Add `VIRUSTOTAL_API_KEY` to `.env` (see step 6) and restart the workbench service to enable VirusTotal enrichment.
+
+## 18. Security Hardening Checklist
 
 Before shared internal use:
 
@@ -504,7 +589,7 @@ Before shared internal use:
 - Add HTTPS/reverse proxy before wider rollout.
 - Add Entra ID authentication before broad internal use.
 
-## 18. Optional Reverse Proxy / HTTPS
+## 19. Optional Reverse Proxy / HTTPS
 
 For broader internal access, put Nginx in front and terminate TLS.
 
@@ -536,7 +621,7 @@ ExecStart=/opt/secops-innovation/.venv/bin/python -m secops web --host 127.0.0.1
 
 Then expose only Nginx on `443`.
 
-## 19. Path To True SaaS
+## 20. Path To True SaaS
 
 This VM deployment is the bridge. A true SaaS version should add:
 

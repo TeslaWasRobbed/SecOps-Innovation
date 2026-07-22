@@ -1,0 +1,15 @@
+[Unit]
+Description=SecOps Innovation Daily Threat Briefing
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=secops
+Group=secops
+WorkingDirectory=/opt/secops-innovation
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/secops-innovation/daily_digest.sh
+
+# Give the LLM call and MITRE ATT&CK data load (first run only) room to finish.
+TimeoutStartSec=900

@@ -48,6 +48,20 @@ def load_company_profile(path: Path | None) -> dict[str, Any]:
     return raw
 
 
+def load_known_domains(profile: dict[str, Any] | None = None) -> list[str]:
+    """Return the `known_domains` list from a company profile (used for lookalike-domain detection).
+
+    Loads the default profile if *profile* is not already provided.
+    """
+    if profile is None:
+        path = resolve_profile_path(None)
+        profile = load_company_profile(path) if path else {}
+    domains = (profile or {}).get("known_domains")
+    if isinstance(domains, list):
+        return [str(d).strip().lower() for d in domains if str(d).strip()]
+    return []
+
+
 def profile_to_prompt_block(profile: dict[str, Any]) -> str:
     """Human-readable block injected into LLM prompts."""
     if not profile:

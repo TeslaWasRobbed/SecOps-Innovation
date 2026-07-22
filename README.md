@@ -6,9 +6,13 @@ A focused cybersecurity intelligence platform featuring automated threat digests
 
 ## ✨ Features
 
-- **📊 Threat Digest**: Automated intelligence reports combining CISA KEV and curated RSS feeds
+- **📊 Threat Digest**: Automated intelligence reports combining CISA KEV and curated RSS feeds — generate on-demand or on a daily systemd timer
+- **🔀 Executive / Tactical Toggle**: Every digest report has a one-click "Executive Briefing" vs "SecOps Tactical" view
+- **🎯 Threat Actor Correlation**: Headlines are automatically matched against the full MITRE ATT&CK + Microsoft Threat Intel roster (100+ actors) and shown as chips on the digest
 - **🎮 Actor Character Select**: Game-like interface for browsing threat actor profiles
-- **🎯 Actor Intelligence**: Comprehensive threat actor profiles with TTPs and defensive recommendations
+- **📧 Header Analysis**: SPF/DKIM/DMARC verdicts, hop timeline, spoofing/lookalike-domain heuristics, and IOC extraction for suspicious emails
+- **🔎 OSINT Lookup**: RDAP (free) + VirusTotal domain/IP/hash reputation lookups, self-throttled to the free-tier rate limit
+- **📦 Breached Package Watchlist**: Tracks newly compromised NPM/Python packages surfaced in threat feeds
 - **Sentinel Detection Drafts**: Generate disabled, review-first Microsoft Sentinel analytic rule YAML from digest items
 - **📄 Multiple Formats**: HTML, PDF, and Markdown exports
 - **⚡ Performance**: Smart caching, retry logic, and feed deduplication
@@ -68,6 +72,12 @@ python -m secops detection --latest --item 1
 
 # Get specific actor intelligence
 python -m secops actor "APT29" --recommendations
+
+# Analyze suspicious email/message headers
+python -m secops header --file suspicious_email.txt
+
+# OSINT lookup for a domain, IP, or file hash
+python -m secops osint 8.8.8.8
 ```
 
 Script equivalents:
@@ -88,7 +98,9 @@ python -m secops digest [--days 7] [--pdf]      # Generate threat digest
 python -m secops actor [NAME] [OPTIONS]         # Actor intelligence
 python -m secops tracking [--refresh]           # Actor mentions across digests
 python -m secops detection [OPTIONS]            # Sentinel YAML detection drafts
-python -m secops web [--port 8765]              # Local browser workbench
+python -m secops web [--port 8765]              # Local browser workbench (Digest, Header Analysis, OSINT tabs)
+python -m secops header [--file PATH]           # Analyze raw email/message headers
+python -m secops osint QUERY                    # RDAP + VirusTotal lookup for a domain/IP/hash
 python -m secops ui                             # Guided command-line menu
 ```
 
@@ -107,9 +119,13 @@ Drafts are saved under `output/detections/drafts/YYYY-MM-DD/`. Open `output/dete
 python -m secops web
 ```
 
-The workbench runs locally at `http://127.0.0.1:8765/`. It lists the latest digest items, generates detection drafts through the Python backend, and shows generated YAML for review/copy.
+The workbench runs locally at `http://127.0.0.1:8765/` with three tabs:
 
-On an Azure Linux VM, run `./start_workbench.sh --host 0.0.0.0 --port 8765 --no-open` behind your chosen network/auth controls. See [AZURE_VM_WEBAPP.md](AZURE_VM_WEBAPP.md).
+- **Digest & Detections** — generate/refresh digests, select items, draft Sentinel YAML, review generated drafts.
+- **Header Analysis** — paste raw headers or a full `.eml`; get SPF/DKIM/DMARC verdicts, a hop timeline, spoofing/lookalike-domain signals, and clickable extracted IOCs.
+- **OSINT Lookup** — RDAP (free) + VirusTotal lookups for a domain, IP, or file hash.
+
+On an Azure Linux VM, run `./start_workbench.sh --host 0.0.0.0 --port 8765 --no-open` behind your chosen network/auth controls, and install `secops-digest.timer.example` for unattended daily briefings. See [AZURE_VM_WEBAPP.md](AZURE_VM_WEBAPP.md).
 
 ### Actor Intelligence Options
 ```bash
@@ -123,13 +139,16 @@ python -m secops actor --search "lazarus"        # Search for actors
 ### Threat Digest (`threat_digest/`)
 - **Multi-source Intelligence**: CISA KEV + curated RSS feeds
 - **LLM Summarization**: AI-powered analysis and structuring
+- **Executive / Tactical Toggle**: One-click view switch on every generated report
+- **Actor Correlation**: Headlines are auto-matched against `shared/actor_correlation.py`'s full actor roster and shown as chips
 - **Interactive Reports**: Charts, progress bars, and mobile-optimized UI
 - **Character Select Interface**: Game-like actor database navigation
 - **Export Options**: HTML, PDF, and JSON formats
+- **Automated Scheduling**: `secops-digest.timer.example` (systemd) generates a fresh daily briefing unattended
 
 ### Actor Watch (`actor_watch/`)
-- **Unified Intelligence**: MITRE ATT&CK + Microsoft threat data
-- **Activity Tracking**: Real-time monitoring from security feeds
+- **Unified Intelligence**: MITRE ATT&CK + Microsoft threat data (100+ actors)
+- **Activity Tracking**: Real-time monitoring from security feeds, scanned against the full actor roster (`shared/actor_tracking.py`)
 - **Timeline Analysis**: Historical activity patterns
 - **Defensive Recommendations**: Actionable security guidance
 
@@ -137,7 +156,12 @@ python -m secops actor --search "lazarus"        # Search for actors
 - **Analyst Selection**: Choose a threat item from the latest generated digest
 - **Template-Guided Output**: Uses `Templates/AnalyticRuleGuide` and `company_profile.yaml`
 - **Review First**: Rules default to `enabled: false` and are saved for copy/paste review
-- **Browser Workbench**: Local web UI for selecting digest items and generating drafts
+- **Browser Workbench**: Local web UI with tabs for digest/detections, header analysis, and OSINT lookups
+
+### Analyst Tooling (`analysis/`)
+- **Header Analysis** (`analysis/email_header.py`): SPF/DKIM/DMARC parsing, Received-header hop timeline, From/Reply-To/Return-Path spoofing heuristics, lookalike-domain detection against `known_domains`, IOC extraction, heuristic risk score
+- **OSINT Lookup** (`analysis/osint.py`): RDAP domain/IP lookups (free, no key) and VirusTotal domain/IP/hash reputation (needs `VIRUSTOTAL_API_KEY`), with built-in free-tier rate limiting
+- Available via the web workbench tabs, or `secops header` / `secops osint` on the CLI
 
 ### Enhanced Features
 - **Caching Layer**: Smart feed caching with configurable TTL
@@ -180,6 +204,9 @@ SecOps Innovation/
 | `ANTHROPIC_API_KEY` | Anthropic API key for Claude | Optional |
 | `FEEDS_CACHE_ENABLED` | Enable feed caching | false |
 | `DIGEST_MAX_COMPLETION_TOKENS` | Max tokens for digest | 4000 |
+| `VIRUSTOTAL_API_KEY` | Enables VirusTotal in the OSINT Lookup tool (RDAP works without it) | Optional |
+| `DIGEST_SCHEDULE_DAYS` | Look-back window for the automated daily briefing (systemd timer) | 1 |
+| `DIGEST_SCHEDULE_PDF` | Also render a PDF on every scheduled daily run | 0 |
 
 ### Company Profile (`company_profile.yaml`)
 ```yaml
@@ -191,6 +218,8 @@ threat_priorities:
   - "Ransomware"
   - "Supply Chain"
   - "Cloud Security"
+known_domains: # your real sending domains — used by Header Analysis to flag lookalikes
+  - "yourcompany.com"
 ```
 
 ## 🎯 Use Cases
@@ -235,6 +264,8 @@ The platform can be extended with custom APIs for:
 4. **Generate Detection Draft**: `python -m secops detection --latest --list`, then `python -m secops detection --latest --item <number>`
 5. **Review YAML**: Open `output/detections/index.html` and copy/paste the draft after analyst review
 6. **Get Specific Intelligence**: `python -m secops actor "APT29" --recommendations`
+7. **Triage a Suspicious Email**: `python -m secops header --file suspicious_email.txt`, then follow up on flagged IOCs with `python -m secops osint <indicator>`
+8. **Automate**: install `secops-digest.timer.example` on your VM for unattended daily briefings (see [AZURE_VM_WEBAPP.md](AZURE_VM_WEBAPP.md))
 
 ## 📊 Platform Statistics
 

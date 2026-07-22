@@ -29,6 +29,8 @@ Examples:
   python -m secops tracking --refresh
   python -m secops actor "APT29" --recommendations
   python -m secops actor --dashboard
+  python -m secops header --file suspicious_email.txt
+  python -m secops osint 8.8.8.8
 """,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -78,6 +80,13 @@ Examples:
     web_parser.add_argument("--host", default="127.0.0.1", help="Bind host")
     web_parser.add_argument("--port", type=int, default=8765, help="Bind port")
     web_parser.add_argument("--no-open", action="store_true", help="Do not open a browser")
+
+    header_parser = subparsers.add_parser("header", help="Analyze raw email/message headers")
+    header_parser.add_argument("--file", default=None, metavar="PATH", help="File with raw headers or a full .eml (default: read from stdin)")
+    header_parser.add_argument("--known-domains", default=None, help="Comma-separated organisation domains (default: known_domains from company_profile.yaml)")
+
+    osint_parser = subparsers.add_parser("osint", help="OSINT lookup for a domain, IP, or file hash")
+    osint_parser.add_argument("query", help="Domain, IP address, or file hash (md5/sha1/sha256)")
 
     subparsers.add_parser("ui", help="Open the guided command-line menu")
 
@@ -199,6 +208,121 @@ def _run_web(args: argparse.Namespace) -> int:
     return web_main(forwarded)
 
 
+def _run_header(args: argparse.Namespace) -> int:
+    from analysis.email_header import analyze_message
+    from threat_digest.profile import load_known_domains
+
+    if args.file:
+        raw = Path(args.file).read_text(encoding="utf-8", errors="replace")
+    elif not sys.stdin.isatty():
+        raw = sys.stdin.read()
+    else:
+        console.print("[yellow]Paste raw headers or a full .eml, then press Ctrl+D (Ctrl+Z on Windows, Enter) to finish:[/yellow]")
+        raw = sys.stdin.read()
+
+    if not raw.strip():
+        console.print("[red]No header/message text provided.[/red]")
+        return 1
+
+    known_domains = (
+        [d.strip() for d in args.known_domains.split(",") if d.strip()]
+        if args.known_domains
+        else load_known_domains()
+    )
+    result = analyze_message(raw, known_domains=known_domains)
+
+    risk = result["risk"]
+    risk_style = {"High": "red", "Medium": "yellow", "Low": "cyan", "Informational": "green"}.get(risk["level"], "white")
+    console.print(
+        Panel(
+            f"[bold {risk_style}]{risk['level']} risk[/bold {risk_style}] (heuristic score {risk['score']})",
+            title="Header Analysis",
+            border_style=risk_style,
+        )
+    )
+
+    auth = result["authentication"]
+    console.print(f"SPF: [bold]{auth['spf']}[/bold]  DKIM: [bold]{auth['dkim']}[/bold]  DMARC: [bold]{auth['dmarc']}[/bold]")
+
+    h = result["headers"]
+    from_disp = f"{h['from']['name']} <{h['from']['address']}>" if h.get("from") else "-"
+    console.print(f"From: {from_disp}")
+    console.print(f"Reply-To: {h['reply_to']['address'] if h.get('reply_to') else '-'}")
+    console.print(f"Subject: {h.get('subject') or '-'}")
+
+    if result["spoofing_signals"]:
+        table = Table(title="Spoofing Signals", show_lines=True)
+        table.add_column("Severity")
+        table.add_column("Detail")
+        for sig in result["spoofing_signals"]:
+            table.add_row(sig["severity"], sig["detail"])
+        console.print(table)
+
+    if result["hops"]:
+        table = Table(title="Hop Timeline", show_lines=True)
+        table.add_column("#", justify="right")
+        table.add_column("From")
+        table.add_column("By")
+        table.add_column("Date")
+        table.add_column("Flags")
+        for hop in result["hops"]:
+            table.add_row(
+                str(hop["index"]),
+                str(hop.get("from") or "-"),
+                str(hop.get("by") or "-"),
+                str(hop.get("date") or "-"),
+                "; ".join(hop.get("flags") or []) or "-",
+            )
+        console.print(table)
+
+    iocs = result["iocs"]
+    ioc_list = list(iocs.get("domains") or []) + [i["value"] for i in iocs.get("ips") or []]
+    if ioc_list:
+        console.print(f"[bold]Extracted IOCs:[/bold] {', '.join(ioc_list)}")
+
+    for warning in result["warnings"]:
+        console.print(f"[yellow]Note:[/yellow] {warning}")
+
+    return 0
+
+
+def _run_osint(query: str) -> int:
+    from analysis.osint import run_osint_lookup
+
+    result = run_osint_lookup(query)
+    if result.get("error"):
+        console.print(f"[red]{result['error']}[/red]")
+        return 1
+
+    console.print(Panel(f"[bold]{result['query']}[/bold] ({result['type']})", title="OSINT Lookup", border_style="cyan"))
+
+    rdap = result.get("rdap") or {}
+    if rdap.get("available"):
+        table = Table(title="RDAP", show_lines=True)
+        table.add_column("Field")
+        table.add_column("Value")
+        for key, value in rdap.items():
+            if key in ("available", "events"):
+                continue
+            display = ", ".join(value) if isinstance(value, list) else str(value or "-")
+            table.add_row(key.replace("_", " ").title(), display)
+        console.print(table)
+    else:
+        console.print(f"[yellow]RDAP:[/yellow] {rdap.get('error', 'Not available.')}")
+
+    vt = result.get("virustotal") or {}
+    if vt.get("available"):
+        vt_style = "red" if vt.get("malicious", 0) > 0 else "green"
+        console.print(
+            f"[bold]VirusTotal:[/bold] [{vt_style}]malicious={vt.get('malicious', 0)}[/{vt_style}] "
+            f"suspicious={vt.get('suspicious', 0)} harmless={vt.get('harmless', 0)} — {vt.get('link', '')}"
+        )
+    else:
+        console.print(f"[yellow]VirusTotal:[/yellow] {vt.get('error', 'Not available.')}")
+
+    return 0
+
+
 def _open_file(path: Path) -> None:
     if path.exists():
         webbrowser.open(path.resolve().as_uri())
@@ -235,8 +359,14 @@ def _run_ui() -> int:
         console.print("7. Generate Sentinel detection draft")
         console.print("8. Open detection draft review")
         console.print("9. Start browser workbench")
-        console.print("10. Exit")
-        choice = Prompt.ask("Selection", choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"], default="1")
+        console.print("10. Analyze email/message headers")
+        console.print("11. OSINT lookup (domain / IP / hash)")
+        console.print("12. Exit")
+        choice = Prompt.ask(
+            "Selection",
+            choices=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"],
+            default="1",
+        )
 
         if choice == "1":
             args = argparse.Namespace(
@@ -329,6 +459,13 @@ def _run_ui() -> int:
             args = argparse.Namespace(host="127.0.0.1", port=8765, no_open=False)
             _run_web(args)
         elif choice == "10":
+            file_path = Prompt.ask("Path to a file with raw headers/.eml (blank to paste directly)", default="")
+            args = argparse.Namespace(file=file_path or None, known_domains=None)
+            _run_header(args)
+        elif choice == "11":
+            query = Prompt.ask("Domain, IP address, or file hash")
+            _run_osint(query)
+        elif choice == "12":
             return 0
 
 
@@ -353,6 +490,10 @@ def main(argv: list[str] | None = None) -> int:
             return _run_detection(args)
         if args.command == "web":
             return _run_web(args)
+        if args.command == "header":
+            return _run_header(args)
+        if args.command == "osint":
+            return _run_osint(args.query)
         if args.command == "ui":
             return _run_ui()
     except KeyboardInterrupt:

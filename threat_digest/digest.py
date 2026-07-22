@@ -40,7 +40,11 @@ def _format_articles(articles: list[dict[str, str]]) -> str:
         return "No recent articles from RSS feeds."
     lines = []
     for a in articles:
-        lines.append(f"- [{a['title']}]({a['link']}) — *{a['source']}*, {a['published']}")
+        actor_note = ""
+        related = a.get("related_actors")
+        if related:
+            actor_note = f" — **Related actor(s): {', '.join(related)}**"
+        lines.append(f"- [{a['title']}]({a['link']}) — *{a['source']}*, {a['published']}{actor_note}")
     return "\n".join(lines)
 
 
@@ -84,6 +88,8 @@ For each vulnerability in **Key Vulnerabilities** and each story cluster in **No
 Never emit action steps as separate top-level bullets **without** nesting or an **Actions** header line directly above them — that breaks the briefing layout.
 
 Include **severity** where relevant (**Critical** / **High** / **Medium**) in the title or first sentence so badges render.
+
+Some headlines below are annotated with **Related actor(s): Name** — this was matched against the MITRE ATT&CK / Microsoft Threat Intelligence roster, not guessed by you. When a cluster includes this annotation, name the actor explicitly in the title or Why-it-matters line. Do not attribute an actor unless it is annotated or explicitly named in the source text.
 
 ## Key Vulnerabilities to Act On
 (From the CISA KEV list — highlight the most critical, recommend patching priorities; tie to org context where relevant)
@@ -170,7 +176,19 @@ def build_digest(
     
     logger.info("Fetching RSS feeds...")
     articles = fetch_rss(limit=rss_limit, days=days)
-    
+
+    # Correlate headlines against the full known threat-actor roster (MITRE ATT&CK +
+    # Microsoft Threat Intel) so campaigns can be tied to a named actor automatically.
+    try:
+        from shared.actor_correlation import correlate_articles
+
+        articles = correlate_articles(articles)
+        actor_hits = sum(1 for a in articles if a.get("related_actors"))
+        if actor_hits:
+            logger.info(f"Actor correlation matched {actor_hits} article(s) to known threat actors")
+    except Exception as exc:
+        logger.warning(f"Actor correlation failed, continuing without it: {exc}")
+
     # Update breached packages watchlist from the fetched articles
     try:
         from detection.package_watch import update_watchlist_from_articles, load_watchlist

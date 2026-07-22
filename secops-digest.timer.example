@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the SecOps Innovation daily threat briefing every day
+
+[Timer]
+# Change the time to suit your team's morning routine (24h, local system time).
+OnCalendar=*-*-* 06:00:00
+RandomizedDelaySec=5min
+# If the VM was off/asleep at 06:00, run once at next boot instead of skipping the day.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

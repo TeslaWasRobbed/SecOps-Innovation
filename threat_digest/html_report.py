@@ -783,6 +783,13 @@ def _payload_severity_badge_prefix(severity: str | None) -> str:
     )
 
 
+def _actor_chips_html(names: list[str]) -> str:
+    if not names:
+        return ""
+    chips = "".join(f'<span class="chip chip-actor">{html.escape(n)}</span>' for n in names)
+    return f'<div class="chips actor-chips" aria-label="Related threat actors">{chips}</div>'
+
+
 def _threat_li_from_payload_item(item: dict[str, Any]) -> str:
     title = str(item.get("title") or "").strip()
     impact = str(item.get("impact") or "").strip()
@@ -795,6 +802,8 @@ def _threat_li_from_payload_item(item: dict[str, Any]) -> str:
         actions = [actions_raw.strip()]
     else:
         actions = []
+    actors_raw = item.get("related_actors")
+    related_actors = [str(a).strip() for a in actors_raw if str(a).strip()] if isinstance(actors_raw, list) else []
 
     impact_inner = ""
     if impact:
@@ -834,6 +843,8 @@ def _threat_li_from_payload_item(item: dict[str, Any]) -> str:
     summary_parts.append(headline_final)
     if impact_inner:
         summary_parts.append(f'<div class="impact-block">{impact_inner}</div>')
+    if related_actors:
+        summary_parts.append(_actor_chips_html(related_actors))
     summary_html = "".join(summary_parts)
 
     tactical_block = (
@@ -3118,6 +3129,17 @@ body {
   background: rgba(0, 229, 200, 0.1);
   border: 1px solid rgba(0, 229, 200, 0.2);
   color: #9cf5e8;
+}
+.chip-actor {
+  background: rgba(167, 139, 250, 0.14);
+  border: 1px solid rgba(167, 139, 250, 0.35);
+  color: #d6c9ff;
+}
+.chip-actor::before {
+  content: "🎯 ";
+}
+.actor-chips {
+  margin-top: 0.5rem !important;
 }
 ul.tool-list {
   margin: 0.35rem 0 0;

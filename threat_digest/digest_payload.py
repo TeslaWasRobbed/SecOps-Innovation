@@ -21,7 +21,8 @@ Use **exactly** these top-level keys (arrays may be empty but keys must exist):
       "title": "One-line headline (include CVE id when from KEV)",
       "severity": "critical|high|medium|low|informational|null",
       "impact": "Plain text: why this matters for leadership and org context",
-      "actions": ["Concrete step 1", "Concrete step 2"]
+      "actions": ["Concrete step 1", "Concrete step 2"],
+      "related_actors": ["Actor name(s) ONLY if annotated in the source text below, else []"]
     }
   ],
   "notable_campaigns": [
@@ -29,7 +30,8 @@ Use **exactly** these top-level keys (arrays may be empty but keys must exist):
       "title": "Story cluster headline",
       "severity": "high|null",
       "impact": "Relevance and risk in plain text",
-      "actions": ["Tactical step"]
+      "actions": ["Tactical step"],
+      "related_actors": ["Actor name(s) ONLY if annotated in the source text below, else []"]
     }
   ],
   "recommended_actions": [
@@ -41,6 +43,8 @@ Use **exactly** these top-level keys (arrays may be empty but keys must exist):
 Rules:
 - `severity` may be `null` if unknown; use lowercase enum values when set.
 - `actions` is always an array of strings (use `[]` if none).
+- `related_actors` is always an array of strings (use `[]` if none) — only include a name if the
+  source text explicitly names it or annotates it with "Related actor(s):"; never guess attribution.
 - Ground every item in the CISA KEV and RSS data below; do not invent CVEs or vendors.
 - Keep text concise; no HTML inside strings.
 """
@@ -91,12 +95,24 @@ def _norm_threat_list(items: Any) -> list[dict[str, Any]]:
             actions = [str(a).strip() for a in actions_raw if str(a).strip()]
         elif isinstance(actions_raw, str) and actions_raw.strip():
             actions = [actions_raw.strip()]
+        actors_raw = it.get("related_actors")
+        related_actors: list[str] = []
+        if isinstance(actors_raw, list):
+            seen: set[str] = set()
+            for a in actors_raw:
+                name = str(a).strip()
+                if name and name.lower() not in seen:
+                    seen.add(name.lower())
+                    related_actors.append(name)
+        elif isinstance(actors_raw, str) and actors_raw.strip():
+            related_actors = [actors_raw.strip()]
         out.append(
             {
                 "title": title,
                 "severity": severity,
                 "impact": impact,
                 "actions": actions,
+                "related_actors": related_actors,
             }
         )
     return out
@@ -127,6 +143,8 @@ def payload_to_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- **{v['title']}**{sev}\n")
         if v["impact"]:
             lines.append(f"  - **Why it matters:** {v['impact']}\n")
+        if v.get("related_actors"):
+            lines.append(f"  - **Related actor(s):** {', '.join(v['related_actors'])}\n")
         if v["actions"]:
             lines.append("  - **Actions:**\n")
             for a in v["actions"]:
@@ -139,6 +157,8 @@ def payload_to_markdown(payload: dict[str, Any]) -> str:
         lines.append(f"- **{v['title']}**{sev}\n")
         if v["impact"]:
             lines.append(f"  - **Why it matters:** {v['impact']}\n")
+        if v.get("related_actors"):
+            lines.append(f"  - **Related actor(s):** {', '.join(v['related_actors'])}\n")
         if v["actions"]:
             lines.append("  - **Actions:**\n")
             for a in v["actions"]:

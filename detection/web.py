@@ -12,6 +12,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from analysis.email_header import analyze_message
+from analysis.osint import run_osint_lookup
 from detection.generator import (
     DEFAULT_GUIDE,
     DEFAULT_MAX_TOKENS,
@@ -27,6 +29,16 @@ from detection.generator import (
 _GENERATION_LOCK = threading.Lock()
 
 
+def _load_known_domains() -> list[str]:
+    """Best-effort load of `known_domains` from the configured company profile."""
+    try:
+        from threat_digest.profile import load_known_domains
+
+        return load_known_domains()
+    except Exception:
+        return []
+
+
 def _item_to_dict(item: DetectionItem) -> dict[str, Any]:
     return {
         "index": item.index,
@@ -37,8 +49,8 @@ def _item_to_dict(item: DetectionItem) -> dict[str, Any]:
     }
 
 
-def _workbench_html() -> str:
-    return """<!doctype html>
+def _workbench_html(known_domains: list[str] | None = None) -> str:
+    html_doc = """<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -83,6 +95,28 @@ def _workbench_html() -> str:
     .manual { display: grid; gap: 8px; margin-top: 12px; }
     input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     textarea { min-height: 110px; resize: vertical; }
+    .tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+    .tab-btn { border: none; border-bottom: 2px solid transparent; background: transparent; border-radius: 0; padding: 10px 4px; margin-right: 14px; color: var(--muted); }
+    .tab-btn:hover { border-color: var(--line); color: var(--text); }
+    .tab-btn.is-active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab-panel { display: none; }
+    .tab-panel.is-active { display: block; }
+    .badge { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+    .badge-pass { background: rgba(94,234,212,.15); color: var(--accent); }
+    .badge-fail { background: rgba(251,113,133,.18); color: var(--bad); }
+    .badge-none, .badge-neutral { background: rgba(168,184,210,.15); color: var(--muted); }
+    .badge-warn { background: rgba(246,198,107,.18); color: var(--warn); }
+    .risk-banner { border-radius: 8px; padding: 12px 14px; margin: 12px 0; font-weight: 600; }
+    .risk-informational, .risk-low { background: rgba(94,234,212,.12); border: 1px solid rgba(94,234,212,.3); color: var(--accent); }
+    .risk-medium { background: rgba(246,198,107,.12); border: 1px solid rgba(246,198,107,.3); color: var(--warn); }
+    .risk-high { background: rgba(251,113,133,.15); border: 1px solid rgba(251,113,133,.35); color: var(--bad); }
+    .hop-list { display: grid; gap: 8px; margin: 8px 0; }
+    .hop-row { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--panel2); font-size: 13px; }
+    .hop-row .meta { display: block; margin-top: 4px; }
+    .ioc-chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; color: var(--text); font-size: 12px; background: #142944; cursor: pointer; }
+    .ioc-chip:hover { border-color: var(--accent); }
+    .result-block { margin-top: 10px; }
+    .result-block h3 { font-size: 14px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
     @media (max-width: 980px) { header, .layout, .draft-head, .digest-controls, .control-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -99,6 +133,12 @@ def _workbench_html() -> str:
       <a class="button" href="/output/detections/index.html">Detection Drafts</a>
     </div>
   </header>
+  <nav class="tabs" role="tablist" aria-label="Workbench sections">
+    <button type="button" class="tab-btn is-active" data-tab="digest" role="tab" aria-selected="true">Digest &amp; Detections</button>
+    <button type="button" class="tab-btn" data-tab="header" role="tab" aria-selected="false">Header Analysis</button>
+    <button type="button" class="tab-btn" data-tab="osint" role="tab" aria-selected="false">OSINT Lookup</button>
+  </nav>
+  <div id="tab-digest" class="tab-panel is-active">
   <div id="status" class="status">Loading latest digest items...</div>
   <section class="panel digest-controls" aria-label="Digest generation">
     <div>
@@ -151,6 +191,32 @@ def _workbench_html() -> str:
       <div id="drafts" class="drafts"></div>
     </section>
   </section>
+  </div>
+  <div id="tab-header" class="tab-panel">
+    <section class="panel" aria-label="Email/message header analysis">
+      <h2>Header Analysis</h2>
+      <p>Paste raw email headers (or a full .eml). Heuristic screening only — always confirm with the mailbox provider's own tooling before acting.</p>
+      <div class="manual">
+        <textarea id="header-raw" placeholder="Paste raw headers or a full .eml here..." style="min-height:220px"></textarea>
+        <label>Known organisation domains (comma-separated, used for lookalike detection)
+          <input id="header-known-domains" placeholder="yourcompany.com, yourcompany.co.uk">
+        </label>
+        <button type="button" id="header-analyze" class="primary">Analyze Headers</button>
+      </div>
+      <div id="header-results"></div>
+    </section>
+  </div>
+  <div id="tab-osint" class="tab-panel">
+    <section class="panel" aria-label="OSINT lookup">
+      <h2>OSINT Lookup</h2>
+      <p>Domain / IP: free RDAP lookup, no key needed. File hash: requires <code>VIRUSTOTAL_API_KEY</code> in <code>.env</code>. VirusTotal free tier is rate-limited to 4 lookups/minute.</p>
+      <div class="manual" style="grid-template-columns: 1fr auto; display: grid; gap: 8px;">
+        <input id="osint-query" placeholder="Domain, IP address, or file hash (md5/sha1/sha256)">
+        <button type="button" id="osint-lookup" class="primary">Lookup</button>
+      </div>
+      <div id="osint-results"></div>
+    </section>
+  </div>
 </main>
 <script>
 var state = { items: [], selected: null };
@@ -278,10 +344,201 @@ document.getElementById("manual-generate").addEventListener("click", function() 
 });
 loadItems().catch(function(e) { setStatus(e.message); });
 loadDrafts().catch(function(e) { setStatus(e.message); });
+
+// --- Tabs -------------------------------------------------------------
+document.querySelectorAll(".tab-btn").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    var tab = btn.getAttribute("data-tab");
+    document.querySelectorAll(".tab-btn").forEach(function(b) {
+      b.classList.toggle("is-active", b === btn);
+      b.setAttribute("aria-selected", b === btn ? "true" : "false");
+    });
+    document.querySelectorAll(".tab-panel").forEach(function(p) {
+      p.classList.toggle("is-active", p.id === "tab-" + tab);
+    });
+  });
+});
+function activateTab(tab) {
+  var btn = document.querySelector(".tab-btn[data-tab='" + tab + "']");
+  if (btn) btn.click();
+}
+
+// --- Header Analysis ----------------------------------------------------
+var KNOWN_DOMAINS = __KNOWN_DOMAINS_JSON__;
+document.getElementById("header-known-domains").value = KNOWN_DOMAINS.join(", ");
+
+function sevBadgeClass(v) {
+  v = (v || "").toLowerCase();
+  if (v === "pass") return "badge-pass";
+  if (v === "fail") return "badge-fail";
+  if (v === "none" || v === "neutral") return "badge-none";
+  return "badge-warn";
+}
+function riskClass(level) { return "risk-" + (level || "informational").toLowerCase(); }
+
+function renderIocChips(list, containerEl) {
+  containerEl.innerHTML = "";
+  (list || []).forEach(function(value) {
+    var chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "ioc-chip";
+    chip.textContent = value;
+    chip.addEventListener("click", function() {
+      activateTab("osint");
+      runOsintLookup(value);
+    });
+    containerEl.appendChild(chip);
+  });
+}
+
+function renderHeaderResults(result) {
+  var el = document.getElementById("header-results");
+  el.innerHTML = "";
+
+  var risk = result.risk || {};
+  var banner = document.createElement("div");
+  banner.className = "risk-banner " + riskClass(risk.level);
+  banner.textContent = "Heuristic risk: " + (risk.level || "Informational") + " (score " + (risk.score || 0) + ")";
+  el.appendChild(banner);
+
+  (result.warnings || []).forEach(function(w) {
+    var p = document.createElement("p");
+    p.textContent = "Note: " + w;
+    el.appendChild(p);
+  });
+
+  var auth = result.authentication || {};
+  var authBlock = document.createElement("div");
+  authBlock.className = "result-block";
+  authBlock.innerHTML = "<h3>Authentication</h3>" +
+    "<span class='badge " + sevBadgeClass(auth.spf) + "'>SPF: " + escapeHtml(auth.spf || "none") + "</span> " +
+    "<span class='badge " + sevBadgeClass(auth.dkim) + "'>DKIM: " + escapeHtml(auth.dkim || "none") + "</span> " +
+    "<span class='badge " + sevBadgeClass(auth.dmarc) + "'>DMARC: " + escapeHtml(auth.dmarc || "none") + "</span>";
+  el.appendChild(authBlock);
+
+  var h = result.headers || {};
+  var fromDisplay = h.from ? ((h.from.name ? h.from.name + " " : "") + "<" + (h.from.address || "") + ">") : "-";
+  var headersBlock = document.createElement("div");
+  headersBlock.className = "result-block";
+  headersBlock.innerHTML = "<h3>Headers</h3>" +
+    "<p><strong>From:</strong> " + escapeHtml(fromDisplay) + "</p>" +
+    "<p><strong>Reply-To:</strong> " + escapeHtml((h.reply_to && h.reply_to.address) || "-") + "</p>" +
+    "<p><strong>Return-Path:</strong> " + escapeHtml(h.return_path || "-") + "</p>" +
+    "<p><strong>Subject:</strong> " + escapeHtml(h.subject || "-") + "</p>" +
+    "<p><strong>Date:</strong> " + escapeHtml(h.date || "-") + "</p>";
+  el.appendChild(headersBlock);
+
+  if ((result.spoofing_signals || []).length) {
+    var spoofBlock = document.createElement("div");
+    spoofBlock.className = "result-block";
+    var lis = result.spoofing_signals.map(function(s) {
+      return "<li><span class='badge " + (s.severity === "high" ? "badge-fail" : "badge-warn") + "'>" + escapeHtml(s.severity) + "</span> " + escapeHtml(s.detail) + "</li>";
+    }).join("");
+    spoofBlock.innerHTML = "<h3>Spoofing signals</h3><ul>" + lis + "</ul>";
+    el.appendChild(spoofBlock);
+  }
+
+  if ((result.hops || []).length) {
+    var hopsBlock = document.createElement("div");
+    hopsBlock.className = "result-block";
+    var hopRows = result.hops.map(function(hop) {
+      var flagText = (hop.flags || []).length ? " &mdash; " + hop.flags.join("; ") : "";
+      return "<div class='hop-row'>#" + hop.index + " from <strong>" + escapeHtml(hop.from || "?") + "</strong> by <strong>" + escapeHtml(hop.by || "?") + "</strong>" +
+        "<span class='meta'>" + escapeHtml(hop.date || "unknown date") + flagText + "</span></div>";
+    }).join("");
+    hopsBlock.innerHTML = "<h3>Hop timeline</h3><div class='hop-list'>" + hopRows + "</div>";
+    el.appendChild(hopsBlock);
+  }
+
+  var iocs = result.iocs || {};
+  var iocBlock = document.createElement("div");
+  iocBlock.className = "result-block";
+  iocBlock.innerHTML = "<h3>Extracted indicators (click to look up)</h3>";
+  var chipWrap = document.createElement("div");
+  chipWrap.className = "chips";
+  iocBlock.appendChild(chipWrap);
+  el.appendChild(iocBlock);
+  var allIocs = [].concat(iocs.domains || [], (iocs.ips || []).map(function(i) { return i.value; }));
+  renderIocChips(allIocs, chipWrap);
+}
+
+document.getElementById("header-analyze").addEventListener("click", function() {
+  var raw = document.getElementById("header-raw").value;
+  var resultsEl = document.getElementById("header-results");
+  if (!raw.trim()) { resultsEl.innerHTML = "<p>Paste headers first.</p>"; return; }
+  var domains = document.getElementById("header-known-domains").value.split(",").map(function(d) { return d.trim(); }).filter(Boolean);
+  var btn = this;
+  btn.disabled = true;
+  resultsEl.innerHTML = "<p>Analyzing...</p>";
+  api("/api/header-analyze", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({raw: raw, known_domains: domains})
+  }).then(renderHeaderResults).catch(function(e) {
+    resultsEl.innerHTML = "<p>" + escapeHtml(e.message) + "</p>";
+  }).finally(function() { btn.disabled = false; });
+});
+
+// --- OSINT Lookup --------------------------------------------------------
+function renderOsintResults(result) {
+  var el = document.getElementById("osint-results");
+  el.innerHTML = "";
+
+  var header = document.createElement("p");
+  header.innerHTML = "<strong>" + escapeHtml(result.query) + "</strong> (" + escapeHtml(result.type) + ")";
+  el.appendChild(header);
+
+  var rdap = result.rdap || {};
+  var rdapBlock = document.createElement("div");
+  rdapBlock.className = "result-block";
+  if (rdap.available) {
+    var rows = Object.keys(rdap).filter(function(k) { return k !== "available" && k !== "events"; })
+      .map(function(k) {
+        var v = rdap[k];
+        var text = Array.isArray(v) ? v.join(", ") : (v == null || v === "" ? "-" : String(v));
+        return "<p><strong>" + escapeHtml(k) + ":</strong> " + escapeHtml(text) + "</p>";
+      }).join("");
+    rdapBlock.innerHTML = "<h3>RDAP</h3>" + rows;
+  } else {
+    rdapBlock.innerHTML = "<h3>RDAP</h3><p>" + escapeHtml(rdap.error || "Not available.") + "</p>";
+  }
+  el.appendChild(rdapBlock);
+
+  var vt = result.virustotal || {};
+  var vtBlock = document.createElement("div");
+  vtBlock.className = "result-block";
+  if (vt.available) {
+    vtBlock.innerHTML = "<h3>VirusTotal</h3>" +
+      "<p><span class='badge " + (vt.malicious > 0 ? "badge-fail" : "badge-pass") + "'>Malicious: " + vt.malicious + "</span> " +
+      "<span class='badge badge-warn'>Suspicious: " + vt.suspicious + "</span> " +
+      "<span class='badge badge-pass'>Harmless: " + vt.harmless + "</span></p>" +
+      "<p><a href='" + escapeHtml(vt.link || "#") + "' target='_blank' rel='noopener'>Open in VirusTotal</a></p>";
+  } else {
+    vtBlock.innerHTML = "<h3>VirusTotal</h3><p>" + escapeHtml(vt.error || "Not available.") + "</p>";
+  }
+  el.appendChild(vtBlock);
+}
+function runOsintLookup(query) {
+  document.getElementById("osint-query").value = query;
+  var el = document.getElementById("osint-results");
+  el.innerHTML = "<p>Looking up " + escapeHtml(query) + "...</p>";
+  return api("/api/osint-lookup", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({query: query})
+  }).then(renderOsintResults).catch(function(e) {
+    el.innerHTML = "<p>" + escapeHtml(e.message) + "</p>";
+  });
+}
+document.getElementById("osint-lookup").addEventListener("click", function() {
+  var q = document.getElementById("osint-query").value.trim();
+  if (q) runOsintLookup(q);
+});
 </script>
 </body>
 </html>
 """
+    return html_doc.replace("__KNOWN_DOMAINS_JSON__", json.dumps(known_domains or []))
 
 
 class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
@@ -304,7 +561,7 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         try:
             if self.path in ("/", "/detections", "/detections/"):
-                self._send(HTTPStatus.OK, _workbench_html().encode("utf-8"), "text/html; charset=utf-8")
+                self._send(HTTPStatus.OK, _workbench_html(_load_known_domains()).encode("utf-8"), "text/html; charset=utf-8")
                 return
             if self.path == "/api/health":
                 self._json({"status": "ok", "service": "secops-workbench"})
@@ -329,6 +586,12 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             if self.path == "/api/generate-digest":
                 self._handle_generate_digest()
                 return
+            if self.path == "/api/header-analyze":
+                self._handle_header_analyze()
+                return
+            if self.path == "/api/osint-lookup":
+                self._handle_osint_lookup()
+                return
             if self.path != "/api/generate":
                 self._error("Not found", HTTPStatus.NOT_FOUND)
                 return
@@ -351,6 +614,28 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             )
         except Exception as exc:
             self._error(str(exc), HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def _handle_header_analyze(self) -> None:
+        length = int(self.headers.get("Content-Length") or "0")
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        raw = str(payload.get("raw") or "")
+        if not raw.strip():
+            self._error("No header/message text provided.")
+            return
+        known_domains = payload.get("known_domains")
+        if not isinstance(known_domains, list) or not known_domains:
+            known_domains = _load_known_domains()
+        result = analyze_message(raw, known_domains=known_domains)
+        self._json(result)
+
+    def _handle_osint_lookup(self) -> None:
+        length = int(self.headers.get("Content-Length") or "0")
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        query = str(payload.get("query") or "").strip()
+        if not query:
+            self._error("No query provided.")
+            return
+        self._json(run_osint_lookup(query))
 
     def _handle_generate_digest(self) -> None:
         if not _GENERATION_LOCK.acquire(blocking=False):

@@ -1,4 +1,10 @@
-"""Real-time actor mention tracking from threat digest history."""
+"""Real-time actor mention tracking from threat digest history.
+
+Scans generated digests against the full known threat-actor roster (MITRE
+ATT&CK + Microsoft Threat Intelligence, via ``shared.actor_correlation``) so
+mention counts reflect the entire actor database rather than a small
+hardcoded list of financial/nation-state groups.
+"""
 
 from __future__ import annotations
 
@@ -8,106 +14,44 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
-# Financial actors to track with all their known aliases
-FINANCIAL_ACTORS = {
-    'fin7': {
-        'name': 'FIN7',
-        'id': 'G0046',
-        'aliases': ['FIN7', 'Carbanak Group', 'Navigator Group', 'Anunak'],
-        'type': 'financially_motivated'
-    },
-    'fin8': {
-        'name': 'FIN8',
-        'id': 'G0061',
-        'aliases': ['FIN8', 'Syssphinx'],
-        'type': 'financially_motivated'
-    },
-    'fin6': {
-        'name': 'FIN6',
-        'id': 'G0037',
-        'aliases': ['FIN6', 'ITG08', 'Skeleton Spider'],
-        'type': 'financially_motivated'
-    },
-    'fin11': {
-        'name': 'FIN11',
-        'id': 'G0085',
-        'aliases': ['FIN11', 'TA505'],
-        'type': 'financially_motivated'
-    },
-    'fin12': {
-        'name': 'FIN12',
-        'id': 'G0101',
-        'aliases': ['FIN12', 'UNC1878'],
-        'type': 'financially_motivated'
-    },
-    'carbanak': {
-        'name': 'Carbanak',
-        'id': 'G0008',
-        'aliases': ['Carbanak', 'Anunak', 'Carbon Spider'],
-        'type': 'financially_motivated'
-    },
-    'silence': {
-        'name': 'Silence',
-        'id': 'G0091',
-        'aliases': ['Silence', 'Whisper Spider'],
-        'type': 'financially_motivated'
-    },
-    'lazarus': {
-        'name': 'Lazarus Group',
-        'id': 'G0032',
-        'aliases': ['Lazarus Group', 'HIDDEN COBRA', 'Guardians of Peace', 'APT38'],
-        'type': 'nation_state'
-    },
-    'apt29': {
-        'name': 'APT29',
-        'id': 'G0016',
-        'aliases': ['APT29', 'Cozy Bear', 'The Dukes', 'YTTRIUM'],
-        'type': 'nation_state'
-    },
-    'apt28': {
-        'name': 'APT28',
-        'id': 'G0007',
-        'aliases': ['APT28', 'Fancy Bear', 'Pawn Storm', 'Sofacy'],
-        'type': 'nation_state'
-    }
-}
+from shared.actor_correlation import actor_key, get_actor_alias_index
 
 
-def scan_digest_for_mentions(digest_path: Path) -> Dict[str, List[str]]:
-    """Scan a digest file for actor mentions and return matches."""
+def scan_digest_for_mentions(digest_path: Path) -> Dict[str, List[dict]]:
+    """Scan a digest file for actor mentions (full roster) and return matches."""
     if not digest_path.exists():
         return {}
-    
+
     try:
         content = digest_path.read_text(encoding='utf-8')
-        mentions = {}
-        
-        for actor_key, actor_data in FINANCIAL_ACTORS.items():
+        mentions: Dict[str, List[dict]] = {}
+
+        for actor in get_actor_alias_index():
             actor_mentions = []
-            
+
             # Check all aliases for this actor
-            for alias in actor_data['aliases']:
+            for alias in actor['aliases']:
                 # Use word boundaries to avoid partial matches
                 pattern = r'\b' + re.escape(alias) + r'\b'
                 matches = re.finditer(pattern, content, re.IGNORECASE)
-                
+
                 for match in matches:
                     # Get context around the mention (50 chars before and after)
                     start = max(0, match.start() - 50)
                     end = min(len(content), match.end() + 50)
                     context = content[start:end].strip()
-                    
+
                     actor_mentions.append({
                         'alias_used': match.group(),
                         'context': context,
                         'position': match.start()
                     })
-            
+
             if actor_mentions:
-                mentions[actor_key] = actor_mentions
-        
+                mentions[actor_key(actor['name'])] = actor_mentions
+
         return mentions
-        
+
     except Exception as e:
         print(f"Error scanning {digest_path}: {e}")
         return {}
@@ -152,13 +96,14 @@ def build_actor_tracking_data() -> Dict[str, Any]:
         'actors': {}
     }
     
-    # Initialize each actor
-    for actor_key, actor_info in FINANCIAL_ACTORS.items():
-        tracking_data['actors'][actor_key] = {
-            'name': actor_info['name'],
-            'id': actor_info['id'],
-            'type': actor_info['type'],
-            'aliases': actor_info['aliases'],
+    # Initialize every actor in the full roster (MITRE ATT&CK + Microsoft Threat Intel)
+    for actor in get_actor_alias_index():
+        slug = actor_key(actor['name'])
+        tracking_data['actors'][slug] = {
+            'name': actor['name'],
+            'id': actor['id'],
+            'type': actor['type'],
+            'aliases': actor['aliases'],
             'total_mentions': 0,
             'digest_appearances': 0,
             'mentions_by_digest': {},
@@ -178,9 +123,11 @@ def build_actor_tracking_data() -> Dict[str, Any]:
         mentions = scan_digest_for_mentions(digest_file)
         
         # Update tracking data
-        for actor_key, actor_mentions in mentions.items():
-            actor_data = tracking_data['actors'][actor_key]
-            
+        for slug, actor_mentions in mentions.items():
+            actor_data = tracking_data['actors'].get(slug)
+            if actor_data is None:
+                continue
+
             # Update counts
             mention_count = len(actor_mentions)
             actor_data['total_mentions'] += mention_count
