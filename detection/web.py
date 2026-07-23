@@ -81,12 +81,13 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     .manual { display: grid; gap: 8px; margin-top: 12px; }
     input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     textarea { min-height: 110px; resize: vertical; }
-    .tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
-    .tab-btn { border: none; border-bottom: 2px solid transparent; background: transparent; border-radius: 0; padding: 10px 4px; margin-right: 14px; color: var(--muted); }
+    .tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+    .tab-btn { border: none; border-bottom: 2px solid transparent; background: transparent; border-radius: 0; padding: 10px 4px; margin-right: 14px; color: var(--muted); font-weight: 600; }
     .tab-btn:hover { border-color: var(--line); color: var(--text); }
     .tab-btn.is-active { color: var(--text); border-bottom-color: var(--accent); }
     .tab-panel { display: none; }
     .tab-panel.is-active { display: block; }
+    .tab-panel--digest.is-active { display: flex; flex-direction: column; min-height: calc(100vh - 260px); }
     .badge { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
     .badge-pass { background: rgba(94,234,212,.15); color: var(--accent); }
     .badge-fail { background: rgba(251,113,133,.18); color: var(--bad); }
@@ -117,7 +118,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
   <header>
     <div>
       <h1>SecOps Workbench</h1>
-      <p>Your daily security operations hub: threat briefings, message header triage, OSINT lookups, and the breached-package watchlist.</p>
+      <p>The threat digest is the default landing view. Use the tabs below to switch to header analysis, OSINT lookups, or the package watchlist.</p>
     </div>
   </header>
   <nav class="tabs" role="tablist" aria-label="Workbench sections">
@@ -291,6 +292,7 @@ function activateTab(tab) {
   var btn = document.querySelector(".tab-btn[data-tab='" + tab + "']");
   if (btn) btn.click();
 }
+activateTab("digest");
 
 // --- Header Analysis ----------------------------------------------------
 var KNOWN_DOMAINS = __KNOWN_DOMAINS_JSON__;
