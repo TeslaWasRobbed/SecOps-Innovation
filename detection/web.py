@@ -22,6 +22,8 @@ from detection.package_watch import (
     scan_for_new_packages,
 )
 from detection.generator import latest_digest_path
+from shared.actor_tracking import load_tracking_data, update_actor_tracking
+from shared.mitre_data import get_all_groups, get_all_techniques, get_group_by_name, get_technique_by_id
 
 
 _GENERATION_LOCK = threading.Lock()
@@ -49,26 +51,37 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
   <style>
     :root { color-scheme: dark; --bg: #07111f; --panel: #102038; --panel2: #0c182b; --line: #294263; --text: #e7f1ff; --muted: #a8b8d2; --accent: #5eead4; --warn: #f6c66b; --bad: #fb7185; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--text); font-family: Segoe UI, Arial, sans-serif; }
+    body { margin: 0; background: radial-gradient(circle at top left, rgba(94,234,212,.14), transparent 28%), linear-gradient(135deg, #06101d 0%, #07111f 50%, #0d1b2d 100%); color: var(--text); font-family: Segoe UI, Arial, sans-serif; }
     main { max-width: 1440px; margin: 0 auto; padding: 28px 18px 60px; }
-    header { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: end; margin-bottom: 18px; }
+    header { display: grid; gap: 18px; align-items: end; margin-bottom: 18px; }
+    .hero { border: 1px solid rgba(94,234,212,.22); border-radius: 16px; padding: 22px; background: linear-gradient(135deg, rgba(16,32,56,.95), rgba(10,22,38,.92)); box-shadow: 0 18px 45px rgba(7,12,21,.35); }
     h1 { margin: 0; font-size: clamp(30px, 4vw, 52px); letter-spacing: 0; }
     h2 { margin: 0 0 10px; font-size: 18px; }
     p { color: var(--muted); line-height: 1.5; }
     button, select, input, textarea { font: inherit; }
-    button, a.button { border: 1px solid var(--line); background: #142944; color: var(--text); border-radius: 6px; padding: 9px 11px; cursor: pointer; text-decoration: none; }
-    button:hover, a.button:hover { border-color: var(--accent); }
-    button.primary { background: #0f766e; border-color: #2dd4bf; color: #ecfeff; }
-    button:disabled { opacity: .55; cursor: wait; }
+    button, a.button { border: 1px solid var(--line); background: #142944; color: var(--text); border-radius: 8px; padding: 9px 11px; cursor: pointer; text-decoration: none; transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease; }
+    button:hover, a.button:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: 0 8px 20px rgba(7,12,21,.22); }
+    button.primary { background: linear-gradient(135deg, #0f766e, #14b8a6); border-color: #2dd4bf; color: #ecfeff; }
+    button:disabled { opacity: .55; cursor: wait; transform: none; box-shadow: none; }
     .status { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--panel2); min-height: 48px; color: var(--muted); }
     .control-grid { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 10px; align-items: end; }
     label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
     select { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     .check-label { grid-template-columns: auto minmax(0, 1fr); align-items: center; padding-bottom: 9px; }
     .check-label input { width: auto; }
-    .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 16px; min-width: 0; }
+    .panel { border: 1px solid rgba(94,234,212,.16); border-radius: 14px; background: rgba(16,32,56,.92); padding: 16px; min-width: 0; box-shadow: 0 10px 30px rgba(7,12,21,.25); }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 10px; border: 1px solid rgba(94,234,212,.22); background: rgba(94,234,212,.1); color: var(--accent); font-size: 12px; font-weight: 600; }
+    .hero-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+    .stat-pill { border: 1px solid rgba(94,234,212,.16); border-radius: 10px; padding: 8px 12px; background: rgba(8,21,37,.7); min-width: 110px; }
+    .stat-pill strong { display: block; font-size: 18px; color: var(--text); }
+    .stat-pill span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+    .card { border: 1px solid rgba(94,234,212,.14); border-radius: 12px; padding: 14px; background: rgba(10,20,36,.85); }
+    .card-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .table-shell { overflow-x: auto; }
+    .compact { display: grid; gap: 8px; grid-template-columns: 1fr auto; }
     .tab-panel--digest { display: none; margin: 0 -18px; }
     .tab-panel--digest.is-active { display: flex; flex-direction: column; }
     .digest-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel2); }
@@ -116,9 +129,9 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
 <body>
 <main>
   <header>
-    <div>
+    <div class="hero">
       <h1>SecOps Workbench</h1>
-      <p>The threat digest is the default landing view. Use the tabs below to switch to header analysis, OSINT lookups, or the package watchlist.</p>
+      <p>The threat digest is the default landing view. Use the tabs below to switch to header analysis, OSINT lookups, package watchlist, and analyst tooling.</p>
     </div>
   </header>
   <nav class="tabs" role="tablist" aria-label="Workbench sections">
@@ -126,6 +139,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     <button type="button" class="tab-btn" data-tab="header" role="tab" aria-selected="false">Header Analysis</button>
     <button type="button" class="tab-btn" data-tab="osint" role="tab" aria-selected="false">OSINT Lookup</button>
     <button type="button" class="tab-btn" data-tab="packages" role="tab" aria-selected="false">Package Watchlist</button>
+    <button type="button" class="tab-btn" data-tab="analyst" role="tab" aria-selected="false">Analyst Toolkit</button>
   </nav>
   <div id="tab-digest" class="tab-panel is-active tab-panel--digest">
   <div class="digest-toolbar">
@@ -213,6 +227,36 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
       <div class="result-block">
         <h3>Python (PyPI)</h3>
         <div id="packages-python"></div>
+      </div>
+    </section>
+  </div>
+  <div id="tab-analyst" class="tab-panel">
+    <section class="panel" aria-label="Analyst toolkit">
+      <h2>Analyst Toolkit</h2>
+      <p>Use this toolkit to spot actor trends across digests and map suspicious activity to ATT&CK techniques.</p>
+      <div class="hero-stats" id="analyst-summary"></div>
+      <div class="tool-grid">
+        <div class="card">
+          <div class="card-header">
+            <h3>Actor tracker</h3>
+            <span class="chip">Digest mentions</span>
+          </div>
+          <div class="toolbar">
+            <button type="button" id="actors-refresh" class="primary">Refresh Actor Tracking</button>
+          </div>
+          <div id="actor-tracker-results" class="table-shell"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>MITRE ATT&CK lookup</h3>
+            <span class="chip">TTP mapping</span>
+          </div>
+          <div class="compact">
+            <input id="mitre-query" placeholder="Search group, alias, or technique ID">
+            <button type="button" id="mitre-search" class="primary">Search</button>
+          </div>
+          <div id="mitre-results" class="result-block"></div>
+        </div>
       </div>
     </section>
   </div>
@@ -554,6 +598,104 @@ document.getElementById("packages-scan").addEventListener("click", function() { 
 document.getElementById("packages-refresh").addEventListener("click", function() { loadWatchlist().catch(function(e) { setPackagesStatus(e.message); }); });
 document.getElementById("pkg-add").addEventListener("click", function() { addPackageManually(); });
 loadWatchlist().catch(function(e) { setPackagesStatus(e.message); });
+
+// --- Analyst Toolkit ----------------------------------------------------
+function renderAnalystSummary(data) {
+  var el = document.getElementById("analyst-summary");
+  var totalActors = data.total_actors || 0;
+  var totalMentions = data.total_mentions || 0;
+  var totalDigests = data.total_digests || 0;
+  el.innerHTML = "<div class='stat-pill'><strong>" + totalActors + "</strong><span>actors seen</span></div>" +
+    "<div class='stat-pill'><strong>" + totalMentions + "</strong><span>mentions</span></div>" +
+    "<div class='stat-pill'><strong>" + totalDigests + "</strong><span>digests scanned</span></div>";
+}
+function renderActorTracker(data) {
+  var el = document.getElementById("actor-tracker-results");
+  var actors = Object.values(data.actors || {}).filter(function(actor) { return (actor.total_mentions || 0) > 0; })
+    .sort(function(a, b) { return (b.total_mentions || 0) - (a.total_mentions || 0); })
+    .slice(0, 10);
+  renderAnalystSummary({
+    total_actors: actors.length,
+    total_mentions: actors.reduce(function(sum, actor) { return sum + (actor.total_mentions || 0); }, 0),
+    total_digests: data.total_digests_scanned || 0
+  });
+  if (!actors.length) {
+    el.innerHTML = "<p>No actor mentions found yet. Generate a digest to populate the tracker.</p>";
+    return;
+  }
+  var rows = actors.map(function(actor) {
+    return "<tr><td><strong>" + escapeHtml(actor.name) + "</strong></td><td>" + (actor.total_mentions || 0) + "</td><td>" + (actor.digest_appearances || 0) + "</td><td>" + escapeHtml(actor.last_seen || "-") + "</td></tr>";
+  }).join("");
+  el.innerHTML = "<table class='pkg-table'><thead><tr><th>Actor</th><th>Mentions</th><th>Digests</th><th>Last seen</th></tr></thead><tbody>" + rows + "</tbody></table>";
+}
+async function loadActorTracker() {
+  try {
+    var data = await api("/api/actor-tracking-data");
+    renderActorTracker(data);
+  } catch (e) {
+    document.getElementById("actor-tracker-results").innerHTML = "<p>" + escapeHtml(e.message) + "</p>";
+  }
+}
+async function refreshActorTracker() {
+  try {
+    var data = await api("/api/actor-tracking/refresh", {method: "POST"});
+    renderActorTracker(data);
+  } catch (e) {
+    document.getElementById("actor-tracker-results").innerHTML = "<p>" + escapeHtml(e.message) + "</p>";
+  }
+}
+function renderMitreResults(result) {
+  var el = document.getElementById("mitre-results");
+  el.innerHTML = "";
+  if (result.error) {
+    el.innerHTML = "<p>" + escapeHtml(result.error) + "</p>";
+    return;
+  }
+  var groups = result.groups || [];
+  var techniques = result.techniques || [];
+  if (!groups.length && !techniques.length) {
+    el.innerHTML = "<p>No matching ATT&CK data found.</p>";
+    return;
+  }
+  var html = [];
+  if (groups.length) {
+    html.push("<div class='result-block'><h3>Groups</h3><ul>");
+    groups.forEach(function(group) {
+      var aliases = (group.aliases || []).slice(0, 4).join(", ");
+      html.push("<li><strong>" + escapeHtml(group.name) + "</strong>" + (group.id ? " (" + escapeHtml(group.id) + ")" : "") + (aliases ? "<br><span class='muted'>Aliases: " + escapeHtml(aliases) + "</span>" : "") + "</li>");
+    });
+    html.push("</ul></div>");
+  }
+  if (techniques.length) {
+    html.push("<div class='result-block'><h3>Techniques</h3><ul>");
+    techniques.forEach(function(tech) {
+      var tactics = (tech.tactics || []).slice(0, 4).join(", ");
+      html.push("<li><strong>" + escapeHtml(tech.id) + "</strong> " + escapeHtml(tech.name) + (tactics ? "<br><span class='muted'>Tactics: " + escapeHtml(tactics) + "</span>" : "") + "</li>");
+    });
+    html.push("</ul></div>");
+  }
+  el.innerHTML = html.join("");
+}
+async function runMitreSearch(query) {
+  var el = document.getElementById("mitre-results");
+  el.innerHTML = "<p>Searching ATT&CK...</p>";
+  try {
+    var data = await api("/api/mitre-search", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({query: query})
+    });
+    renderMitreResults(data);
+  } catch (e) {
+    el.innerHTML = "<p>" + escapeHtml(e.message) + "</p>";
+  }
+}
+document.getElementById("actors-refresh").addEventListener("click", function() { refreshActorTracker(); });
+document.getElementById("mitre-search").addEventListener("click", function() {
+  var q = document.getElementById("mitre-query").value.trim();
+  if (q) runMitreSearch(q);
+});
+loadActorTracker().catch(function(e) { document.getElementById("actor-tracker-results").innerHTML = "<p>" + escapeHtml(e.message) + "</p>"; });
 </script>
 </body>
 </html>
@@ -597,6 +739,9 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/package-watchlist":
                 self._json({"watchlist": load_watchlist()})
                 return
+            if path == "/api/actor-tracking-data":
+                self._json(load_tracking_data())
+                return
             if path.startswith("/output/"):
                 self._serve_output_file(path.lstrip("/"))
                 return
@@ -624,6 +769,12 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/package-watchlist/remove":
                 self._handle_package_remove()
+                return
+            if path == "/api/actor-tracking/refresh":
+                self._handle_actor_tracking_refresh()
+                return
+            if path == "/api/mitre-search":
+                self._handle_mitre_search()
                 return
             self._error("Not found", HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -688,6 +839,22 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             self._error(str(exc))
             return
         self._json({"watchlist": watchlist})
+
+    def _handle_actor_tracking_refresh(self) -> None:
+        data = update_actor_tracking()
+        self._json(data)
+
+    def _handle_mitre_search(self) -> None:
+        length = int(self.headers.get("Content-Length") or "0")
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        query = str(payload.get("query") or "").strip()
+        if not query:
+            self._error("No MITRE query provided.")
+            return
+        q = query.lower()
+        groups = [g for g in get_all_groups() if q in g["name"].lower() or any(q in alias.lower() for alias in g.get("aliases", [])) or q in g.get("id", "").lower()]
+        techniques = [t for t in get_all_techniques() if q in t["name"].lower() or q in t["id"].lower() or any(q in item.lower() for item in t.get("tactics", []))]
+        self._json({"groups": groups[:8], "techniques": techniques[:8]})
 
     def _handle_generate_digest(self) -> None:
         if not _GENERATION_LOCK.acquire(blocking=False):
