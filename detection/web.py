@@ -61,7 +61,6 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     button.primary { background: #0f766e; border-color: #2dd4bf; color: #ecfeff; }
     button:disabled { opacity: .55; cursor: wait; }
     .status { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--panel2); min-height: 48px; color: var(--muted); }
-    .digest-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: end; margin: 16px 0; }
     .control-grid { display: grid; grid-template-columns: repeat(3, minmax(160px, 1fr)); gap: 10px; align-items: end; }
     label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
     select { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
@@ -70,8 +69,15 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     .panel { border: 1px solid var(--line); border-radius: 8px; background: var(--panel); padding: 16px; min-width: 0; }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
-    .digest-frame { width: 100%; height: 80vh; min-height: 480px; border: 1px solid var(--line); border-radius: 8px; background: #fff; display: block; }
-    .digest-empty { border: 1px dashed var(--line); border-radius: 8px; padding: 40px 16px; text-align: center; color: var(--muted); }
+    .tab-panel--digest { display: none; margin: 0 -18px; }
+    .tab-panel--digest.is-active { display: flex; flex-direction: column; }
+    .digest-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+    .digest-toolbar label { display: flex; flex-direction: row; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; margin: 0; }
+    .digest-toolbar select { width: auto; padding: 6px 8px; }
+    .digest-toolbar .check-label input { width: auto; }
+    .status-inline { color: var(--muted); font-size: 13px; margin-left: auto; }
+    .digest-frame { width: 100%; flex: 1 1 auto; border: 0; background: var(--bg); display: block; }
+    .digest-empty { margin: 40px 18px; border: 1px dashed var(--line); border-radius: 8px; padding: 40px 16px; text-align: center; color: var(--muted); }
     .manual { display: grid; gap: 8px; margin-top: 12px; }
     input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     textarea { min-height: 110px; resize: vertical; }
@@ -120,41 +126,31 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     <button type="button" class="tab-btn" data-tab="osint" role="tab" aria-selected="false">OSINT Lookup</button>
     <button type="button" class="tab-btn" data-tab="packages" role="tab" aria-selected="false">Package Watchlist</button>
   </nav>
-  <div id="tab-digest" class="tab-panel is-active">
-  <div id="status" class="status">Loading latest digest...</div>
-  <section class="panel digest-controls" aria-label="Digest generation">
-    <div>
-      <h2>Daily Threat Digest</h2>
-      <div class="control-grid">
-        <label>Look-back window
-          <select id="digest-days">
-            <option value="1">1 day</option>
-            <option value="3">3 days</option>
-            <option value="7" selected>7 days</option>
-            <option value="14">14 days</option>
-            <option value="30">30 days</option>
-          </select>
-        </label>
-        <label class="check-label">
-          <input id="digest-no-llm" type="checkbox">
-          <span>Feed-only mode</span>
-        </label>
-        <label class="check-label">
-          <input id="digest-pdf" type="checkbox">
-          <span>Also generate PDF</span>
-        </label>
-      </div>
-    </div>
-    <div class="toolbar">
-      <button type="button" id="generate-digest" class="primary">Generate Digest</button>
-      <a class="button" id="digest-open-new" href="/output/threat_digest/index.html" target="_blank" rel="noopener">Open In New Tab</a>
-    </div>
-  </section>
-  <section class="panel" aria-label="Threat digest report">
-    <p>The report below has its own Executive Briefing / SecOps Tactical toggle, and a History link, in the top-right corner.</p>
-    <div id="digest-empty" class="digest-empty">No digest generated yet. Choose a look-back window above and press <strong>Generate Digest</strong>.</div>
-    <iframe id="digest-frame" class="digest-frame" style="display:none" title="Threat digest report"></iframe>
-  </section>
+  <div id="tab-digest" class="tab-panel is-active tab-panel--digest">
+  <div class="digest-toolbar">
+    <label>Look-back
+      <select id="digest-days">
+        <option value="1">1 day</option>
+        <option value="3">3 days</option>
+        <option value="7" selected>7 days</option>
+        <option value="14">14 days</option>
+        <option value="30">30 days</option>
+      </select>
+    </label>
+    <label class="check-label">
+      <input id="digest-no-llm" type="checkbox">
+      <span>Feed-only</span>
+    </label>
+    <label class="check-label">
+      <input id="digest-pdf" type="checkbox">
+      <span>Also generate PDF</span>
+    </label>
+    <button type="button" id="generate-digest" class="primary">Generate Digest</button>
+    <a class="button" id="digest-open-new" href="/output/threat_digest/index.html" target="_blank" rel="noopener">Open In New Tab</a>
+    <span id="status" class="status-inline"></span>
+  </div>
+  <div id="digest-empty" class="digest-empty">No digest generated yet. Choose a look-back window above and press <strong>Generate Digest</strong>.</div>
+  <iframe id="digest-frame" class="digest-frame" style="display:none" title="Threat digest report"></iframe>
   </div>
   <div id="tab-header" class="tab-panel">
     <section class="panel" aria-label="Email/message header analysis">
