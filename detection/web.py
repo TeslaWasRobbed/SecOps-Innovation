@@ -85,6 +85,10 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     .compact { display: grid; gap: 8px; grid-template-columns: 1fr auto; }
     .tab-panel--digest { display: none; margin: 0 -18px; }
     .tab-panel--digest.is-active { display: flex; flex-direction: column; }
+    .tab-panel--embed { display: none; }
+    .tab-panel--embed.is-active { display: flex; flex-direction: column; min-height: calc(100vh - 260px); }
+    .embed-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+    .embed-frame { width: 100%; flex: 1 1 auto; min-height: 720px; border: 0; background: var(--bg); display: block; border-radius: 10px; border: 1px solid var(--line); }
     .digest-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel2); }
     .digest-toolbar label { display: flex; flex-direction: row; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; margin: 0; }
     .digest-toolbar select { width: auto; padding: 6px 8px; }
@@ -95,10 +99,18 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     .manual { display: grid; gap: 8px; margin-top: 12px; }
     input, textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     textarea { min-height: 110px; resize: vertical; }
-    .tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-    .tab-btn { border: none; border-bottom: 2px solid transparent; background: transparent; border-radius: 0; padding: 10px 4px; margin-right: 14px; color: var(--muted); font-weight: 600; }
+    .workspace-shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .side-nav { position: sticky; top: 16px; border: 1px solid rgba(94,234,212,.16); border-radius: 14px; background: rgba(10,20,36,.9); padding: 14px; box-shadow: 0 10px 24px rgba(7,12,21,.2); }
+    .nav-heading { font-size: 12px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
+    .tabs { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+    .tab-btn { border: 1px solid transparent; background: rgba(8,21,37,.7); border-radius: 10px; padding: 10px 12px; color: var(--muted); font-weight: 600; text-align: left; width: 100%; }
     .tab-btn:hover { border-color: var(--line); color: var(--text); }
-    .tab-btn.is-active { color: var(--text); border-bottom-color: var(--accent); }
+    .tab-btn.is-active { color: var(--text); border-color: rgba(94,234,212,.35); background: rgba(94,234,212,.12); }
+    .quick-actions { display: grid; gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); }
+    .quick-actions button { width: 100%; justify-content: center; font-size: 13px; }
+    .mini-action { border: 1px solid rgba(94,234,212,.16); background: rgba(16,32,56,.92); color: var(--text); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+    .mini-action:hover { border-color: var(--accent); }
+    .workspace-content { min-width: 0; }
     .tab-panel { display: none; }
     .tab-panel.is-active { display: block; }
     .tab-panel--digest.is-active { display: flex; flex-direction: column; min-height: calc(100vh - 260px); }
@@ -132,16 +144,30 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
   <header>
     <div class="hero">
       <h1>SecOps Workbench</h1>
-      <p>The threat digest is the default landing view. Use the tabs below to switch to header analysis, OSINT lookups, package watchlist, and analyst tooling.</p>
+      <p>The threat digest is the default landing view. Use the tabs below to switch between investigations, actor intelligence, and analyst tooling.</p>
     </div>
   </header>
-  <nav class="tabs" role="tablist" aria-label="Workbench sections">
-    <button type="button" class="tab-btn is-active" data-tab="digest" role="tab" aria-selected="true">Threat Digest</button>
-    <button type="button" class="tab-btn" data-tab="header" role="tab" aria-selected="false">Header Analysis</button>
-    <button type="button" class="tab-btn" data-tab="osint" role="tab" aria-selected="false">OSINT Lookup</button>
-    <button type="button" class="tab-btn" data-tab="packages" role="tab" aria-selected="false">Package Watchlist</button>
-    <button type="button" class="tab-btn" data-tab="analyst" role="tab" aria-selected="false">Analyst Toolkit</button>
-  </nav>
+  <div class="workspace-shell">
+    <aside class="side-nav" aria-label="Operational shortcuts">
+      <div class="nav-heading">Operator board</div>
+      <nav class="tabs" role="tablist" aria-label="Workbench sections">
+        <button type="button" class="tab-btn is-active" data-tab="digest" role="tab" aria-selected="true">Threat Digest</button>
+        <button type="button" class="tab-btn" data-tab="header" role="tab" aria-selected="false">Header Analysis</button>
+        <button type="button" class="tab-btn" data-tab="osint" role="tab" aria-selected="false">OSINT Lookup</button>
+        <button type="button" class="tab-btn" data-tab="packages" role="tab" aria-selected="false">Package Watchlist</button>
+        <button type="button" class="tab-btn" data-tab="actor-watch" role="tab" aria-selected="false">Actor Watch</button>
+        <button type="button" class="tab-btn" data-tab="actor-tracker" role="tab" aria-selected="false">Actor Tracker</button>
+        <button type="button" class="tab-btn" data-tab="mitre" role="tab" aria-selected="false">MITRE Lookup</button>
+        <button type="button" class="tab-btn" data-tab="indicators" role="tab" aria-selected="false">Indicator Extractor</button>
+        <button type="button" class="tab-btn" data-tab="siem" role="tab" aria-selected="false">SIEM Query Builder</button>
+      </nav>
+      <div class="quick-actions">
+        <button type="button" class="mini-action" id="quick-generate-digest">Generate digest</button>
+        <button type="button" class="mini-action" id="quick-refresh-actors">Refresh actors</button>
+        <button type="button" class="mini-action" id="quick-refresh-watch">Refresh watch</button>
+      </div>
+    </aside>
+    <div class="workspace-content">
   <div id="tab-digest" class="tab-panel is-active tab-panel--digest">
   <div class="digest-toolbar">
     <label>Look-back
@@ -231,56 +257,58 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
       </div>
     </section>
   </div>
-  <div id="tab-analyst" class="tab-panel">
-    <section class="panel" aria-label="Analyst toolkit">
-      <h2>Analyst Toolkit</h2>
-      <p>Use this toolkit to spot actor trends across digests and map suspicious activity to ATT&CK techniques.</p>
-      <div class="hero-stats" id="analyst-summary"></div>
-      <div class="tool-grid">
-        <div class="card">
-          <div class="card-header">
-            <h3>Actor tracker</h3>
-            <span class="chip">Digest mentions</span>
-          </div>
-          <div class="toolbar">
-            <button type="button" id="actors-refresh" class="primary">Refresh Actor Tracking</button>
-            <a class="button" href="/output/actor_watch/index.html" target="_blank" rel="noopener">Open Actor Watch</a>
-          </div>
-          <div id="actor-tracker-results" class="table-shell"></div>
-        </div>
-        <div class="card">
-          <div class="card-header">
-            <h3>MITRE ATT&CK lookup</h3>
-            <span class="chip">TTP mapping</span>
-          </div>
-          <div class="compact">
-            <input id="mitre-query" placeholder="Search group, alias, or technique ID">
-            <button type="button" id="mitre-search" class="primary">Search</button>
-          </div>
-          <div id="mitre-results" class="result-block"></div>
-        </div>
+  <div id="tab-actor-watch" class="tab-panel tab-panel--embed">
+    <section class="panel" aria-label="Actor watch dashboard">
+      <div class="embed-toolbar">
+        <h2 style="margin: 0;">Actor Watch</h2>
+        <button type="button" id="actor-watch-refresh" class="primary">Refresh</button>
+        <a class="button" href="/output/actor_watch/index.html" target="_blank" rel="noopener">Open In New Tab</a>
       </div>
-      <div class="tool-grid">
-        <div class="card">
-          <div class="card-header">
-            <h3>Indicator extractor</h3>
-            <span class="chip">Turn text into IOCs</span>
-          </div>
-          <textarea id="investigation-text" placeholder="Paste an email, report excerpt, or chat message..." style="min-height:140px"></textarea>
-          <div class="toolbar" style="margin-top:10px">
-            <button type="button" id="extract-indicators" class="primary">Extract Indicators</button>
-          </div>
-          <div id="indicator-results" class="result-block"></div>
-        </div>
-        <div class="card">
-          <div class="card-header">
-            <h3>SIEM query builder</h3>
-            <span class="chip">Pivot to hunting</span>
-          </div>
-          <div id="query-results" class="result-block"></div>
-        </div>
-      </div>
+      <p>Browse the generated actor catalogue without leaving the workbench.</p>
+      <iframe id="actor-watch-frame" class="embed-frame" title="Actor watch dashboard" src="/output/actor_watch/index.html"></iframe>
     </section>
+  </div>
+  <div id="tab-actor-tracker" class="tab-panel">
+    <section class="panel" aria-label="Actor tracker">
+      <h2>Actor Tracker</h2>
+      <p>Spot actor trends across the latest digests and see where they reappear.</p>
+      <div class="hero-stats" id="analyst-summary"></div>
+      <div class="toolbar">
+        <button type="button" id="actors-refresh" class="primary">Refresh Actor Tracking</button>
+      </div>
+      <div id="actor-tracker-results" class="table-shell"></div>
+    </section>
+  </div>
+  <div id="tab-mitre" class="tab-panel">
+    <section class="panel" aria-label="MITRE ATT&CK lookup">
+      <h2>MITRE ATT&CK Lookup</h2>
+      <p>Search groups, aliases, and techniques to map suspicious activity to ATT&CK.</p>
+      <div class="compact">
+        <input id="mitre-query" placeholder="Search group, alias, or technique ID">
+        <button type="button" id="mitre-search" class="primary">Search</button>
+      </div>
+      <div id="mitre-results" class="result-block"></div>
+    </section>
+  </div>
+  <div id="tab-indicators" class="tab-panel">
+    <section class="panel" aria-label="Indicator extractor">
+      <h2>Indicator Extractor</h2>
+      <p>Paste an email, report excerpt, or chat message to turn it into structured IOCs.</p>
+      <textarea id="investigation-text" placeholder="Paste an email, report excerpt, or chat message..." style="min-height:140px"></textarea>
+      <div class="toolbar" style="margin-top:10px">
+        <button type="button" id="extract-indicators" class="primary">Extract Indicators</button>
+      </div>
+      <div id="indicator-results" class="result-block"></div>
+    </section>
+  </div>
+  <div id="tab-siem" class="tab-panel">
+    <section class="panel" aria-label="SIEM query builder">
+      <h2>SIEM Query Builder</h2>
+      <p>Turn extracted indicators into ready-to-use hunting queries for common SIEM platforms.</p>
+      <div id="query-results" class="result-block"></div>
+    </section>
+  </div>
+    </div>
   </div>
 </main>
 <script>
@@ -339,6 +367,18 @@ async function generateDigest() {
   }
 }
 digestBtn.addEventListener("click", function() { generateDigest().catch(function(e) { setStatus(e.message); digestBtn.disabled = false; }); });
+document.getElementById("quick-generate-digest").addEventListener("click", function() {
+  activateTab("digest");
+  generateDigest().catch(function(e) { setStatus(e.message); digestBtn.disabled = false; });
+});
+document.getElementById("quick-refresh-actors").addEventListener("click", function() {
+  activateTab("actor-tracker");
+  refreshActorTracker();
+});
+document.getElementById("quick-refresh-watch").addEventListener("click", function() {
+  activateTab("actor-watch");
+  refreshActorWatch();
+});
 loadDigestStatus();
 
 // --- Tabs -------------------------------------------------------------
@@ -622,6 +662,15 @@ document.getElementById("pkg-add").addEventListener("click", function() { addPac
 loadWatchlist().catch(function(e) { setPackagesStatus(e.message); });
 
 // --- Analyst Toolkit ----------------------------------------------------
+var actorWatchFrame = document.getElementById("actor-watch-frame");
+function refreshActorWatch() {
+  if (actorWatchFrame) {
+    actorWatchFrame.src = "/output/actor_watch/index.html?t=" + Date.now();
+  }
+}
+if (document.getElementById("actor-watch-refresh")) {
+  document.getElementById("actor-watch-refresh").addEventListener("click", function() { refreshActorWatch(); });
+}
 function renderAnalystSummary(data) {
   var el = document.getElementById("analyst-summary");
   var totalActors = data.total_actors || 0;
