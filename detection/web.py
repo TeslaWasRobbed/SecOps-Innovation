@@ -21,6 +21,7 @@ from detection.package_watch import (
     remove_package,
     scan_for_new_packages,
 )
+from detection.analyst_tools import build_siem_query, extract_indicators
 from detection.generator import latest_digest_path
 from shared.actor_tracking import load_tracking_data, update_actor_tracking
 from shared.mitre_data import get_all_groups, get_all_techniques, get_group_by_name, get_technique_by_id
@@ -243,6 +244,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
           </div>
           <div class="toolbar">
             <button type="button" id="actors-refresh" class="primary">Refresh Actor Tracking</button>
+            <a class="button" href="/output/actor_watch/index.html" target="_blank" rel="noopener">Open Actor Watch</a>
           </div>
           <div id="actor-tracker-results" class="table-shell"></div>
         </div>
@@ -256,6 +258,26 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
             <button type="button" id="mitre-search" class="primary">Search</button>
           </div>
           <div id="mitre-results" class="result-block"></div>
+        </div>
+      </div>
+      <div class="tool-grid">
+        <div class="card">
+          <div class="card-header">
+            <h3>Indicator extractor</h3>
+            <span class="chip">Turn text into IOCs</span>
+          </div>
+          <textarea id="investigation-text" placeholder="Paste an email, report excerpt, or chat message..." style="min-height:140px"></textarea>
+          <div class="toolbar" style="margin-top:10px">
+            <button type="button" id="extract-indicators" class="primary">Extract Indicators</button>
+          </div>
+          <div id="indicator-results" class="result-block"></div>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h3>SIEM query builder</h3>
+            <span class="chip">Pivot to hunting</span>
+          </div>
+          <div id="query-results" class="result-block"></div>
         </div>
       </div>
     </section>
@@ -695,6 +717,37 @@ document.getElementById("mitre-search").addEventListener("click", function() {
   var q = document.getElementById("mitre-query").value.trim();
   if (q) runMitreSearch(q);
 });
+document.getElementById("extract-indicators").addEventListener("click", function() {
+  var text = document.getElementById("investigation-text").value;
+  var indicatorEl = document.getElementById("indicator-results");
+  var queryEl = document.getElementById("query-results");
+  if (!text.trim()) { indicatorEl.innerHTML = "<p>Paste some evidence first.</p>"; queryEl.innerHTML = ""; return; }
+  indicatorEl.innerHTML = "<p>Extracting indicators...</p>";
+  queryEl.innerHTML = "<p>Building query templates...</p>";
+  api("/api/analyst-tools", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({text: text})
+  }).then(function(data) {
+    var indicators = data.indicators || [];
+    if (!indicators.length) {
+      indicatorEl.innerHTML = "<p>No obvious indicators were found.</p>";
+      queryEl.innerHTML = "";
+      return;
+    }
+    var items = indicators.map(function(item) {
+      return "<li><strong>" + escapeHtml(item.type) + "</strong>: " + escapeHtml(item.value) + "</li>";
+    }).join("");
+    indicatorEl.innerHTML = "<ul>" + items + "</ul>";
+    var queries = data.queries || {};
+    queryEl.innerHTML = "<div class='result-block'><h3>Splunk</h3><pre>" + escapeHtml(queries.splunk || "") + "</pre></div>" +
+      "<div class='result-block'><h3>Elastic</h3><pre>" + escapeHtml(queries.elastic || "") + "</pre></div>" +
+      "<div class='result-block'><h3>Microsoft Sentinel</h3><pre>" + escapeHtml(queries.sentinel || "") + "</pre></div>";
+  }).catch(function(e) {
+    indicatorEl.innerHTML = "<p>" + escapeHtml(e.message) + "</p>";
+    queryEl.innerHTML = "";
+  });
+});
 loadActorTracker().catch(function(e) { document.getElementById("actor-tracker-results").innerHTML = "<p>" + escapeHtml(e.message) + "</p>"; });
 </script>
 </body>
@@ -742,6 +795,9 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             if path == "/api/actor-tracking-data":
                 self._json(load_tracking_data())
                 return
+            if path == "/api/analyst-tools":
+                self._json(self._handle_analyst_tools())
+                return
             if path.startswith("/output/"):
                 self._serve_output_file(path.lstrip("/"))
                 return
@@ -775,6 +831,9 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/mitre-search":
                 self._handle_mitre_search()
+                return
+            if path == "/api/analyst-tools":
+                self._handle_analyst_tools_post()
                 return
             self._error("Not found", HTTPStatus.NOT_FOUND)
         except Exception as exc:
@@ -855,6 +914,20 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
         groups = [g for g in get_all_groups() if q in g["name"].lower() or any(q in alias.lower() for alias in g.get("aliases", [])) or q in g.get("id", "").lower()]
         techniques = [t for t in get_all_techniques() if q in t["name"].lower() or q in t["id"].lower() or any(q in item.lower() for item in t.get("tactics", []))]
         self._json({"groups": groups[:8], "techniques": techniques[:8]})
+
+    def _handle_analyst_tools(self) -> dict[str, Any]:
+        return {"status": "ok"}
+
+    def _handle_analyst_tools_post(self) -> None:
+        length = int(self.headers.get("Content-Length") or "0")
+        payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+        text = str(payload.get("text") or "").strip()
+        if not text:
+            self._error("No evidence text provided.")
+            return
+        indicators = extract_indicators(text)
+        query = build_siem_query(indicators)
+        self._json({"indicators": indicators, "queries": query})
 
     def _handle_generate_digest(self) -> None:
         if not _GENERATION_LOCK.acquire(blocking=False):
