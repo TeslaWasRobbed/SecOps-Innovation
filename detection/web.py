@@ -7,6 +7,7 @@ import json
 import sys
 import threading
 import webbrowser
+from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -21,7 +22,7 @@ from detection.package_watch import (
     remove_package,
     scan_for_new_packages,
 )
-from detection.analyst_tools import build_siem_query, extract_indicators
+from detection.analyst_tools import build_investigation_summary, build_siem_query, extract_indicators
 from detection.generator import latest_digest_path
 from shared.actor_tracking import load_tracking_data, update_actor_tracking
 from shared.mitre_data import get_all_groups, get_all_techniques, get_group_by_name, get_technique_by_id
@@ -70,7 +71,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     select { width: 100%; border: 1px solid var(--line); border-radius: 6px; background: #081525; color: var(--text); padding: 9px 10px; }
     .check-label { grid-template-columns: auto minmax(0, 1fr); align-items: center; padding-bottom: 9px; }
     .check-label input { width: auto; }
-    .panel { border: 1px solid rgba(94,234,212,.16); border-radius: 14px; background: rgba(16,32,56,.92); padding: 16px; min-width: 0; box-shadow: 0 10px 30px rgba(7,12,21,.25); }
+    .panel { border: 1px solid rgba(94,234,212,.16); border-radius: 16px; background: linear-gradient(145deg, rgba(16,32,56,.95), rgba(8,21,37,.94)); padding: 18px; min-width: 0; box-shadow: 0 14px 36px rgba(7,12,21,.24); }
     .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
     .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
     .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 5px 10px; border: 1px solid rgba(94,234,212,.22); background: rgba(94,234,212,.1); color: var(--accent); font-size: 12px; font-weight: 600; }
@@ -79,7 +80,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     .stat-pill strong { display: block; font-size: 18px; color: var(--text); }
     .stat-pill span { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
     .tool-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
-    .card { border: 1px solid rgba(94,234,212,.14); border-radius: 12px; padding: 14px; background: rgba(10,20,36,.85); }
+    .card { border: 1px solid rgba(94,234,212,.14); border-radius: 14px; padding: 14px; background: rgba(10,20,36,.9); }
     .card-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
     .table-shell { overflow-x: auto; }
     .compact { display: grid; gap: 8px; grid-template-columns: 1fr auto; }
@@ -90,6 +91,8 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     .embed-toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
     .embed-frame { width: 100%; flex: 1 1 auto; min-height: 720px; border: 0; background: var(--bg); display: block; border-radius: 10px; border: 1px solid var(--line); }
     .digest-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 18px; border-bottom: 1px solid var(--line); background: var(--panel2); }
+    .digest-overview { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); padding: 12px 18px 0; }
+    .digest-overview .summary-pill { min-height: 84px; }
     .digest-toolbar label { display: flex; flex-direction: row; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; margin: 0; }
     .digest-toolbar select { width: auto; padding: 6px 8px; }
     .digest-toolbar .check-label input { width: auto; }
@@ -128,8 +131,31 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     .hop-row .meta { display: block; margin-top: 4px; }
     .ioc-chip { border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; color: var(--text); font-size: 12px; background: #142944; cursor: pointer; }
     .ioc-chip:hover { border-color: var(--accent); }
-    .result-block { margin-top: 10px; }
+    .result-block { margin-top: 12px; border-top: 1px solid rgba(94,234,212,.12); padding-top: 10px; }
+    .investigation-summary { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); margin-bottom: 12px; }
+    .summary-pill { border: 1px solid rgba(94,234,212,.16); border-radius: 10px; padding: 10px 12px; background: rgba(8,21,37,.8); }
+    .summary-pill strong { display: block; font-size: 18px; }
+    .summary-pill span { font-size: 12px; color: var(--muted); }
+    .indicator-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .indicator-pill { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; background: rgba(20,41,68,.7); color: var(--text); font-size: 12px; }
+    .indicator-pill strong { color: var(--accent); }
+    pre { white-space: pre-wrap; word-break: break-word; background: rgba(8,21,37,.8); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font-size: 12px; line-height: 1.45; }
     .result-block h3 { font-size: 14px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+    .actor-grid { display: grid; gap: 12px; }
+    .actor-card { border: 1px solid rgba(94,234,212,.14); border-radius: 12px; padding: 12px; background: rgba(8,21,37,.76); }
+    .actor-card h3 { margin: 0 0 4px; font-size: 15px; }
+    .actor-card p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .actor-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .metric-pill { border: 1px solid rgba(94,234,212,.16); border-radius: 999px; padding: 4px 8px; background: rgba(20,41,68,.72); color: var(--muted); font-size: 12px; }
+    .context-list { display: grid; gap: 8px; margin-top: 10px; }
+    .context-item { border-left: 2px solid rgba(94,234,212,.3); padding-left: 8px; color: var(--muted); font-size: 12px; }
+    .mitre-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); margin-top: 10px; }
+    .mitre-card { border: 1px solid rgba(94,234,212,.14); border-radius: 12px; padding: 12px; background: rgba(8,21,37,.76); }
+    .mitre-card h3 { margin: 0 0 6px; font-size: 15px; }
+    .mitre-card p { margin: 6px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .inline-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .inline-chip { border: 1px solid rgba(94,234,212,.16); border-radius: 999px; padding: 4px 8px; font-size: 11px; color: var(--muted); background: rgba(20,41,68,.72); }
+    .muted { color: var(--muted); }
     table.pkg-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     table.pkg-table th, table.pkg-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
     table.pkg-table th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .03em; }
@@ -191,6 +217,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
     <a class="button" id="digest-open-new" href="/output/threat_digest/index.html" target="_blank" rel="noopener">Open In New Tab</a>
     <span id="status" class="status-inline"></span>
   </div>
+  <div id="digest-overview" class="digest-overview"></div>
   <div id="digest-empty" class="digest-empty">No digest generated yet. Choose a look-back window above and press <strong>Generate Digest</strong>.</div>
   <iframe id="digest-frame" class="digest-frame" style="display:none" title="Threat digest report"></iframe>
   </div>
@@ -274,6 +301,8 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
       <p>Spot actor trends across the latest digests and see where they reappear.</p>
       <div class="hero-stats" id="analyst-summary"></div>
       <div class="toolbar">
+        <input id="actor-search" placeholder="Filter actors by name or alias">
+        <button type="button" id="actor-filter-btn">Filter</button>
         <button type="button" id="actors-refresh" class="primary">Refresh Actor Tracking</button>
       </div>
       <div id="actor-tracker-results" class="table-shell"></div>
@@ -287,6 +316,12 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
         <input id="mitre-query" placeholder="Search group, alias, or technique ID">
         <button type="button" id="mitre-search" class="primary">Search</button>
       </div>
+      <div class="chips" style="margin-top:10px">
+        <button type="button" class="chip mitre-example" data-query="APT29">APT29</button>
+        <button type="button" class="chip mitre-example" data-query="Wizard Spider">Wizard Spider</button>
+        <button type="button" class="chip mitre-example" data-query="T1566">T1566</button>
+        <button type="button" class="chip mitre-example" data-query="Credential Access">Credential Access</button>
+      </div>
       <div id="mitre-results" class="result-block"></div>
     </section>
   </div>
@@ -299,6 +334,7 @@ def _workbench_html(known_domains: list[str] | None = None) -> str:
         <button type="button" id="extract-indicators" class="primary">Extract Indicators</button>
       </div>
       <div id="indicator-results" class="result-block"></div>
+      <div id="investigation-summary" class="result-block"></div>
     </section>
   </div>
   <div id="tab-siem" class="tab-panel">
@@ -316,8 +352,22 @@ var statusEl = document.getElementById("status");
 var digestBtn = document.getElementById("generate-digest");
 var digestFrame = document.getElementById("digest-frame");
 var digestEmpty = document.getElementById("digest-empty");
+var digestOverview = document.getElementById("digest-overview");
 
 function setStatus(text) { statusEl.textContent = text; }
+function renderDigestOverview(data) {
+  if (!digestOverview) return;
+  var lookback = document.getElementById("digest-days").value;
+  var feedOnly = document.getElementById("digest-no-llm").checked ? "Feed-only" : "Full feed";
+  var statusText = data && data.html_available ? "Ready" : "Pending";
+  var updatedText = data && data.generated_at ? new Date(data.generated_at).toLocaleString() : "Not generated yet";
+  digestOverview.innerHTML = [
+    "<div class='summary-pill'><strong>" + escapeHtml(statusText) + "</strong><span>Digest status</span></div>",
+    "<div class='summary-pill'><strong>" + escapeHtml(lookback + "d") + "</strong><span>Current look-back</span></div>",
+    "<div class='summary-pill'><strong>" + escapeHtml(feedOnly) + "</strong><span>Generation mode</span></div>",
+    "<div class='summary-pill'><strong>" + escapeHtml(updatedText) + "</strong><span>Last update</span></div>"
+  ].join("");
+}
 function escapeHtml(s) {
   return String(s || "").replace(/[&<>"']/g, function(c) {
     return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","'":"&#39;"}[c];
@@ -338,6 +388,7 @@ async function loadDigestStatus() {
   setStatus("Loading latest digest...");
   try {
     var data = await api("/api/digest-status");
+    renderDigestOverview(data);
     if (data.html_available) {
       showDigestFrame();
       setStatus("Loaded existing digest" + (data.digest_path ? " (" + data.digest_path + ")" : "") + ".");
@@ -361,6 +412,7 @@ async function generateDigest() {
       body: JSON.stringify({days: days, no_llm: noLlm, pdf: pdf})
     });
     showDigestFrame();
+    renderDigestOverview({html_available: true, generated_at: new Date().toISOString(), digest_path: data.latest_digest || null});
     setStatus("Digest generated. Latest report: " + data.latest_html);
   } finally {
     digestBtn.disabled = false;
@@ -682,9 +734,15 @@ function renderAnalystSummary(data) {
 }
 function renderActorTracker(data) {
   var el = document.getElementById("actor-tracker-results");
+  var searchTerm = (document.getElementById("actor-search")?.value || "").trim().toLowerCase();
   var actors = Object.values(data.actors || {}).filter(function(actor) { return (actor.total_mentions || 0) > 0; })
+    .filter(function(actor) {
+      if (!searchTerm) return true;
+      var haystack = [actor.name, actor.id, ...(actor.aliases || [])].join(" ").toLowerCase();
+      return haystack.indexOf(searchTerm) !== -1;
+    })
     .sort(function(a, b) { return (b.total_mentions || 0) - (a.total_mentions || 0); })
-    .slice(0, 10);
+    .slice(0, 12);
   renderAnalystSummary({
     total_actors: actors.length,
     total_mentions: actors.reduce(function(sum, actor) { return sum + (actor.total_mentions || 0); }, 0),
@@ -694,10 +752,17 @@ function renderActorTracker(data) {
     el.innerHTML = "<p>No actor mentions found yet. Generate a digest to populate the tracker.</p>";
     return;
   }
-  var rows = actors.map(function(actor) {
-    return "<tr><td><strong>" + escapeHtml(actor.name) + "</strong></td><td>" + (actor.total_mentions || 0) + "</td><td>" + (actor.digest_appearances || 0) + "</td><td>" + escapeHtml(actor.last_seen || "-") + "</td></tr>";
+  var cards = actors.map(function(actor) {
+    var recentContexts = (actor.recent_contexts || []).slice(0, 2);
+    return "<article class='actor-card'><div class='card-header' style='margin-bottom: 6px;'><h3>" + escapeHtml(actor.name) + "</h3><span class='chip'>" + escapeHtml(actor.type || "Actor") + "</span></div>" +
+      (actor.id ? "<div class='muted'>" + escapeHtml(actor.id) + "</div>" : "") +
+      "<div class='actor-metrics'><span class='metric-pill'>Mentions: " + (actor.total_mentions || 0) + "</span><span class='metric-pill'>Digests: " + (actor.digest_appearances || 0) + "</span><span class='metric-pill'>Last seen: " + escapeHtml(actor.last_seen || "-") + "</span></div>" +
+      (recentContexts.length ? "<div class='context-list'>" + recentContexts.map(function(item) {
+        return "<div class='context-item'><strong>" + escapeHtml(item.alias_used || "Mention") + "</strong> — " + escapeHtml((item.context || "").slice(0, 140)) + "</div>";
+      }).join("") + "</div>" : "") +
+      "</article>";
   }).join("");
-  el.innerHTML = "<table class='pkg-table'><thead><tr><th>Actor</th><th>Mentions</th><th>Digests</th><th>Last seen</th></tr></thead><tbody>" + rows + "</tbody></table>";
+  el.innerHTML = "<div class='actor-grid'>" + cards + "</div>";
 }
 async function loadActorTracker() {
   try {
@@ -715,6 +780,24 @@ async function refreshActorTracker() {
     document.getElementById("actor-tracker-results").innerHTML = "<p>" + escapeHtml(e.message) + "</p>";
   }
 }
+function renderInvestigationSummary(summary) {
+  var el = document.getElementById("investigation-summary");
+  if (!summary || !summary.total_indicators) {
+    el.innerHTML = "";
+    return;
+  }
+  var byType = summary.by_type || {};
+  var cards = [
+    "<div class='summary-pill'><strong>" + summary.total_indicators + "</strong><span>Total indicators</span></div>",
+    "<div class='summary-pill'><strong>" + (byType.domain || 0) + "</strong><span>Domains</span></div>",
+    "<div class='summary-pill'><strong>" + (byType.ip || 0) + "</strong><span>IPs</span></div>",
+    "<div class='summary-pill'><strong>" + (byType.hash || 0) + "</strong><span>Hashes</span></div>"
+  ].join("");
+  el.innerHTML = "<div class='investigation-summary'>" + cards + "</div>" +
+    "<div class='result-block'><h3>Recommended actions</h3><ul>" +
+    (summary.recommended_actions || []).map(function(action) { return "<li>" + escapeHtml(action) + "</li>"; }).join("") +
+    "</ul></div>";
+}
 function renderMitreResults(result) {
   var el = document.getElementById("mitre-results");
   el.innerHTML = "";
@@ -729,21 +812,22 @@ function renderMitreResults(result) {
     return;
   }
   var html = [];
+  html.push("<div class='investigation-summary'><div class='summary-pill'><strong>" + groups.length + "</strong><span>Groups</span></div><div class='summary-pill'><strong>" + techniques.length + "</strong><span>Techniques</span></div></div>");
   if (groups.length) {
-    html.push("<div class='result-block'><h3>Groups</h3><ul>");
+    html.push("<div class='mitre-grid'>");
     groups.forEach(function(group) {
-      var aliases = (group.aliases || []).slice(0, 4).join(", ");
-      html.push("<li><strong>" + escapeHtml(group.name) + "</strong>" + (group.id ? " (" + escapeHtml(group.id) + ")" : "") + (aliases ? "<br><span class='muted'>Aliases: " + escapeHtml(aliases) + "</span>" : "") + "</li>");
+      var aliases = (group.aliases || []).slice(0, 4);
+      html.push("<article class='mitre-card'><h3>" + escapeHtml(group.name) + "</h3><div class='muted'>" + escapeHtml(group.id || "No ATT&CK ID") + "</div><p>" + escapeHtml((group.description || "No description available.").slice(0, 180)) + "</p>" + (aliases.length ? "<div class='inline-list'>" + aliases.map(function(alias) { return "<span class='inline-chip'>" + escapeHtml(alias) + "</span>"; }).join("") + "</div>" : "") + "</article>");
     });
-    html.push("</ul></div>");
+    html.push("</div>");
   }
   if (techniques.length) {
-    html.push("<div class='result-block'><h3>Techniques</h3><ul>");
+    html.push("<div class='mitre-grid'>");
     techniques.forEach(function(tech) {
-      var tactics = (tech.tactics || []).slice(0, 4).join(", ");
-      html.push("<li><strong>" + escapeHtml(tech.id) + "</strong> " + escapeHtml(tech.name) + (tactics ? "<br><span class='muted'>Tactics: " + escapeHtml(tactics) + "</span>" : "") + "</li>");
+      var tactics = (tech.tactics || []).slice(0, 4);
+      html.push("<article class='mitre-card'><h3>" + escapeHtml(tech.id) + " " + escapeHtml(tech.name) + "</h3><p>" + escapeHtml((tech.description || "No description available.").slice(0, 180)) + "</p>" + (tactics.length ? "<div class='inline-list'>" + tactics.map(function(tactic) { return "<span class='inline-chip'>" + escapeHtml(tactic) + "</span>"; }).join("") + "</div>" : "") + "</article>");
     });
-    html.push("</ul></div>");
+    html.push("</div>");
   }
   el.innerHTML = html.join("");
 }
@@ -762,9 +846,30 @@ async function runMitreSearch(query) {
   }
 }
 document.getElementById("actors-refresh").addEventListener("click", function() { refreshActorTracker(); });
+document.getElementById("actor-filter-btn").addEventListener("click", function() { loadActorTracker().catch(function(e) { document.getElementById("actor-tracker-results").innerHTML = "<p>" + escapeHtml(e.message) + "</p>"; }); });
+document.getElementById("actor-search").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    loadActorTracker().catch(function(err) { document.getElementById("actor-tracker-results").innerHTML = "<p>" + escapeHtml(err.message) + "</p>"; });
+  }
+});
 document.getElementById("mitre-search").addEventListener("click", function() {
   var q = document.getElementById("mitre-query").value.trim();
   if (q) runMitreSearch(q);
+});
+document.getElementById("mitre-query").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") {
+    e.preventDefault();
+    var q = document.getElementById("mitre-query").value.trim();
+    if (q) runMitreSearch(q);
+  }
+});
+document.querySelectorAll(".mitre-example").forEach(function(btn) {
+  btn.addEventListener("click", function() {
+    var q = btn.getAttribute("data-query");
+    document.getElementById("mitre-query").value = q;
+    runMitreSearch(q);
+  });
 });
 document.getElementById("extract-indicators").addEventListener("click", function() {
   var text = document.getElementById("investigation-text").value;
@@ -779,21 +884,25 @@ document.getElementById("extract-indicators").addEventListener("click", function
     body: JSON.stringify({text: text})
   }).then(function(data) {
     var indicators = data.indicators || [];
+    var summary = data.summary || {};
     if (!indicators.length) {
       indicatorEl.innerHTML = "<p>No obvious indicators were found.</p>";
+      renderInvestigationSummary({});
       queryEl.innerHTML = "";
       return;
     }
     var items = indicators.map(function(item) {
-      return "<li><strong>" + escapeHtml(item.type) + "</strong>: " + escapeHtml(item.value) + "</li>";
+      return "<span class='indicator-pill'><strong>" + escapeHtml(item.type) + "</strong> " + escapeHtml(item.value) + "</span>";
     }).join("");
-    indicatorEl.innerHTML = "<ul>" + items + "</ul>";
+    indicatorEl.innerHTML = "<div class='indicator-list'>" + items + "</div>";
+    renderInvestigationSummary(summary);
     var queries = data.queries || {};
     queryEl.innerHTML = "<div class='result-block'><h3>Splunk</h3><pre>" + escapeHtml(queries.splunk || "") + "</pre></div>" +
       "<div class='result-block'><h3>Elastic</h3><pre>" + escapeHtml(queries.elastic || "") + "</pre></div>" +
       "<div class='result-block'><h3>Microsoft Sentinel</h3><pre>" + escapeHtml(queries.sentinel || "") + "</pre></div>";
   }).catch(function(e) {
     indicatorEl.innerHTML = "<p>" + escapeHtml(e.message) + "</p>";
+    renderInvestigationSummary({});
     queryEl.innerHTML = "";
   });
 });
@@ -833,9 +942,13 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/digest-status":
                 digest = latest_digest_path()
+                generated_at = None
+                if DIGEST_HTML_PATH.is_file():
+                    generated_at = datetime.fromtimestamp(DIGEST_HTML_PATH.stat().st_mtime, tz=timezone.utc).isoformat()
                 self._json({
                     "digest_path": str(digest) if digest else None,
                     "html_available": DIGEST_HTML_PATH.is_file(),
+                    "generated_at": generated_at,
                 })
                 return
             if path == "/api/package-watchlist":
@@ -976,7 +1089,8 @@ class DetectionWorkbenchHandler(BaseHTTPRequestHandler):
             return
         indicators = extract_indicators(text)
         query = build_siem_query(indicators)
-        self._json({"indicators": indicators, "queries": query})
+        summary = build_investigation_summary(indicators)
+        self._json({"indicators": indicators, "queries": query, "summary": summary})
 
     def _handle_generate_digest(self) -> None:
         if not _GENERATION_LOCK.acquire(blocking=False):
